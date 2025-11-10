@@ -1,4 +1,5 @@
 pipeline {
+  // Optionally force windows node: agent { label 'windows' }
   agent any
   environment {
     BUILD_OUTPUT = "C:\\Users\\swethasuresh\\build"
@@ -21,19 +22,15 @@ pipeline {
         bat '''
           pushd "%WORKSPACE%"
           echo Running mvn in %CD%
-
-          rem run mvn and capture full log
           mvn -B clean package -DskipTests > mvn-build.log 2>&1
           set RC=%ERRORLEVEL%
           echo MAVEN RETURN CODE: %RC%
-
           if %RC% NEQ 0 (
             echo ===== MAVEN BUILD FAILED - printing tail of mvn-build.log =====
             powershell -Command "Get-Content .\\mvn-build.log -Tail 500 -Raw" || type mvn-build.log
             echo ===== END MAVEN LOG =====
             exit /b %RC%
           )
-
           echo MAVEN build succeeded
           popd
         '''
@@ -75,9 +72,14 @@ pipeline {
     stage('Copy workspace -> BUILD_OUTPUT (robocopy)') {
       steps {
         bat """
-          rem copy everything except .git
-          robocopy "%WORKSPACE%" "${BUILD_OUTPUT}" /E /COPY:DAT /R:2 /W:2 /XD ".git" ".git\\\\"
-          echo ROBocopy workspace exit code: %ERRORLEVEL%
+          robocopy "%WORKSPACE%" "${BUILD_OUTPUT}" /E /COPY:DAT /R:2 /W:2 /XD ".git"
+          set RC=%ERRORLEVEL%
+          if %RC% GEQ 8 (
+            echo ROBocopy workspace FAILED with exit code %RC%
+            exit /b %RC%
+          ) else (
+            echo ROBocopy workspace completed (exit code %RC%)
+          )
         """
       }
     }
@@ -88,11 +90,23 @@ pipeline {
           if not exist "${BUILD_OUTPUT}\\\\artifacts" mkdir "${BUILD_OUTPUT}\\\\artifacts"
           if exist "%WORKSPACE%\\target" (
             robocopy "%WORKSPACE%\\target" "${BUILD_OUTPUT}\\\\artifacts" *.jar *.war *.zip /E /COPY:DAT /R:2 /W:2
-            echo ROBocopy artifacts exit code: %ERRORLEVEL%
+            set RC=%ERRORLEVEL%
+            if %RC% GEQ 8 (
+              echo ROBocopy artifacts FAILED with exit code %RC% & exit /b %RC%
+            ) else (
+              echo ROBocopy artifacts completed (exit code %RC%)
+            )
           ) else (
             echo "No target found; nothing to copy"
           )
         """
+      }
+    }
+
+    stage('Archive artifacts to Jenkins') {
+      steps {
+        // archive whatever your build produced for easier downloads from Jenkins UI
+        archiveArtifacts artifacts: 'target/**/*.{jar,war,zip}', allowEmptyArchive: true, fingerprint: true
       }
     }
   }
