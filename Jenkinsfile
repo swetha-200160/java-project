@@ -10,7 +10,7 @@ ipeline {
             steps {
                 git branch: 'master',
                     credentialsId: 'gitrepo',
-                    url: 'https://github.com/swetha-200160/push--it-easily.git'
+                    url: 'https://github.com/swetha-200160/java-project.git'
             }
         }
 
