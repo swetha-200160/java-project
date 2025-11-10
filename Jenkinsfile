@@ -1,6 +1,5 @@
 pipeline {
-  // Optionally force windows node: agent { label 'windows' }
-  agent any
+  agent { label 'windows' } // change to your Windows agent label if it's different
   environment {
     BUILD_OUTPUT = "C:\\Users\\swethasuresh\\build"
   }
@@ -17,17 +16,18 @@ pipeline {
       }
     }
 
-    stage('Build (fail fast and capture log)') {
+    stage('Build (capture log, fail on mvn error)') {
       steps {
         bat '''
           pushd "%WORKSPACE%"
           echo Running mvn in %CD%
+          rem run maven and capture full log
           mvn -B clean package -DskipTests > mvn-build.log 2>&1
           set RC=%ERRORLEVEL%
           echo MAVEN RETURN CODE: %RC%
           if %RC% NEQ 0 (
             echo ===== MAVEN BUILD FAILED - printing tail of mvn-build.log =====
-            powershell -Command "if (Test-Path .\\mvn-build.log) { Get-Content .\\mvn-build.log -Tail 500 | Out-String | Write-Host } else { Write-Host 'mvn-build.log not present' }"
+            powershell -Command "if (Test-Path '.\\mvn-build.log') { Get-Content '.\\mvn-build.log' -Tail 500 | Out-String | Write-Host } else { Write-Host 'mvn-build.log not present' }"
             echo ===== END MAVEN LOG =====
             exit /b %RC%
           )
@@ -50,10 +50,34 @@ pipeline {
           )
           echo ==== tail of mvn-build.log (last 200 lines) ====
           if exist "%WORKSPACE%\\mvn-build.log" (
-            powershell -Command "if (Test-Path .\\mvn-build.log) { Get-Content .\\mvn-build.log -Tail 200 | Out-String | Write-Host } else { Write-Host 'mvn-build.log not present' }"
+            powershell -Command "Get-Content '.\\mvn-build.log' -Tail 200 | Out-String | Write-Host"
           ) else (
             echo "mvn-build.log not present"
           )
+        '''
+      }
+    }
+
+    stage('Safe Debug Dump (non-failing)') {
+      steps {
+        bat '''
+          echo ==== SAFE DEBUG DUMP ====
+          echo whoami:
+          whoami || echo whoami failed
+          echo.
+          echo Workspace:
+          echo %WORKSPACE%
+          echo.
+          echo mvn version:
+          mvn -v || echo mvn not available
+          echo.
+          echo Tail mvn-build.log (if present):
+          powershell -Command "if (Test-Path '.\\mvn-build.log') { Get-Content '.\\mvn-build.log' -Tail 200 | Out-String | Write-Host } else { Write-Host 'mvn-build.log not present' }"
+          echo.
+          echo BUILD_OUTPUT listing:
+          if exist "%BUILD_OUTPUT%" ( dir "%BUILD_OUTPUT%" /B ) else ( echo BUILD_OUTPUT not present )
+          echo ==== END SAFE DEBUG DUMP ====
+          exit /b 0
         '''
       }
     }
@@ -62,9 +86,9 @@ pipeline {
       steps {
         bat """
           echo Creating BUILD_OUTPUT and write-test file...
-          if not exist "${BUILD_OUTPUT}" mkdir "${BUILD_OUTPUT}" || echo mkdir returned %ERRORLEVEL%
-          echo TEST > "${BUILD_OUTPUT}\\\\jenkins-write-test.txt" || echo write failed %ERRORLEVEL%
-          dir "${BUILD_OUTPUT}" /B || echo "Cannot list BUILD_OUTPUT"
+          if not exist "%BUILD_OUTPUT%" mkdir "%BUILD_OUTPUT%" || echo mkdir returned %ERRORLEVEL%
+          echo TEST > "%BUILD_OUTPUT%\\\\jenkins-write-test.txt" || echo write failed %ERRORLEVEL%
+          dir "%BUILD_OUTPUT%" /B || echo "Cannot list BUILD_OUTPUT"
         """
       }
     }
@@ -72,7 +96,7 @@ pipeline {
     stage('Copy workspace -> BUILD_OUTPUT (robocopy)') {
       steps {
         bat """
-          robocopy "%WORKSPACE%" "${BUILD_OUTPUT}" /E /COPY:DAT /R:2 /W:2 /XD ".git"
+          robocopy "%WORKSPACE%" "%BUILD_OUTPUT%" /E /COPY:DAT /R:2 /W:2 /XD ".git"
           set RC=%ERRORLEVEL%
           if %RC% GEQ 8 (
             echo ROBocopy workspace FAILED with exit code %RC%
@@ -87,9 +111,9 @@ pipeline {
     stage('Copy target artifacts -> BUILD_OUTPUT\\\\artifacts') {
       steps {
         bat """
-          if not exist "${BUILD_OUTPUT}\\\\artifacts" mkdir "${BUILD_OUTPUT}\\\\artifacts"
+          if not exist "%BUILD_OUTPUT%\\\\artifacts" mkdir "%BUILD_OUTPUT%\\\\artifacts"
           if exist "%WORKSPACE%\\target" (
-            robocopy "%WORKSPACE%\\target" "${BUILD_OUTPUT}\\\\artifacts" *.jar *.war *.zip /E /COPY:DAT /R:2 /W:2
+            robocopy "%WORKSPACE%\\target" "%BUILD_OUTPUT%\\\\artifacts" *.jar *.war *.zip /E /COPY:DAT /R:2 /W:2
             set RC=%ERRORLEVEL%
             if %RC% GEQ 8 (
               echo ROBocopy artifacts FAILED with exit code %RC% & exit /b %RC%
