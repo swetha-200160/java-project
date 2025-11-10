@@ -27,7 +27,7 @@ pipeline {
           echo MAVEN RETURN CODE: %RC%
           if %RC% NEQ 0 (
             echo ===== MAVEN BUILD FAILED - printing tail of mvn-build.log =====
-            powershell -Command "Get-Content .\\mvn-build.log -Tail 500 -Raw" || type mvn-build.log
+            powershell -Command "if (Test-Path .\\mvn-build.log) { Get-Content .\\mvn-build.log -Tail 500 | Out-String | Write-Host } else { Write-Host 'mvn-build.log not present' }"
             echo ===== END MAVEN LOG =====
             exit /b %RC%
           )
@@ -50,7 +50,7 @@ pipeline {
           )
           echo ==== tail of mvn-build.log (last 200 lines) ====
           if exist "%WORKSPACE%\\mvn-build.log" (
-            powershell -Command "Get-Content .\\mvn-build.log -Tail 200 -Raw"
+            powershell -Command "if (Test-Path .\\mvn-build.log) { Get-Content .\\mvn-build.log -Tail 200 | Out-String | Write-Host } else { Write-Host 'mvn-build.log not present' }"
           ) else (
             echo "mvn-build.log not present"
           )
@@ -105,7 +105,6 @@ pipeline {
 
     stage('Archive artifacts to Jenkins') {
       steps {
-        // archive whatever your build produced for easier downloads from Jenkins UI
         archiveArtifacts artifacts: 'target/**/*.{jar,war,zip}', allowEmptyArchive: true, fingerprint: true
       }
     }
