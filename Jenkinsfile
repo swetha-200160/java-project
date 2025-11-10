@@ -8,6 +8,7 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
+        // Checkout repository to the workspace on the agent
         git branch: 'master',
             credentialsId: 'gitrepo',
             url: 'https://github.com/swetha-200160/java-project.git'
@@ -16,8 +17,8 @@ pipeline {
 
     stage('Build') {
       steps {
-        echo 'Building Java project...'
-        // capture mvn console to a small logfile for debugging if needed
+        echo 'Running mvn package to produce artifacts...'
+        // Run mvn and keep console output in mvn-build.log for debugging
         bat '''
           mvn -B clean package -DskipTests > mvn-build.log 2>&1
           type mvn-build.log | findstr /R /C:"Building .*jar:" /C:"BUILD SUCCESS" || echo "mvn messages not found in log"
@@ -25,66 +26,80 @@ pipeline {
       }
     }
 
-    stage('Archive artifacts') {
-      steps {
-        archiveArtifacts artifacts: 'target/**/*.jar, target/**/*.war', fingerprint: true
-      }
-    }
-
-    stage('Copy Build Artifacts to BUILD_OUTPUT') {
+    stage('Copy: entire workspace -> BUILD_OUTPUT') {
       steps {
         script {
-          echo "Workspace: ${env.WORKSPACE}"
+          echo "Copying workspace to ${env.BUILD_OUTPUT} (preserve folder structure)"
           bat """
-            REM --- show current directory and workspace listing ---
-            echo Current dir:
-            cd
-            echo.
-            echo Listing workspace root (first 200 lines):
+            REM show current workspace and check content
+            echo Workspace is: %WORKSPACE%
             dir "%WORKSPACE%\\*" /S /B | more
 
-            REM --- show contents of target if present ---
-            if exist "%WORKSPACE%\\target" (
-              echo ===== target exists. Listing target contents =====
-              dir "%WORKSPACE%\\target\\*" /S /B
-            ) else (
-              echo ===== target does NOT exist =====
-            )
-
-            REM --- ensure destination exists ---
+            REM ensure destination exists
             if not exist "${env.BUILD_OUTPUT}" mkdir "${env.BUILD_OUTPUT}"
 
-            REM --- copy jars/wars from target to destination (preserve subfolders) ---
-            if exist "%WORKSPACE%\\target" (
-              robocopy "%WORKSPACE%\\target" "${env.BUILD_OUTPUT}" *.jar *.war *.zip /E /COPY:DAT /R:2 /W:2
-            ) else (
-              echo "No target folder to copy from. Skipping robocopy."
-            )
+            REM copy EVERYTHING from workspace to BUILD_OUTPUT except .git
+            REM /E = copy subdirs, including empty ones; /COPY:DAT preserve data/attributes/timestamps
+            robocopy "%WORKSPACE%" "${env.BUILD_OUTPUT}" /E /COPY:DAT /R:2 /W:2 /XD ".git" ".git\\"
 
-            REM --- capture robocopy exit code ---
             set RC=%ERRORLEVEL%
-            echo Robocopy exit code: %RC%
-
-            REM treat 0-7 as success (robocopy behavior)
+            echo Robocopy (workspace) exit code: %RC%
             if %RC% LEQ 7 (
-              echo "Artifacts copy finished with acceptable code %RC%."
-              exit /b 0
+              echo "Workspace copy ok (code %RC%)."
             ) else (
-              echo "Robocopy reported error code %RC%."
+              echo "Workspace copy FAILED (code %RC%)."
               exit /b %RC%
             )
           """
         }
       }
     }
+
+    stage('Copy: target artifacts -> BUILD_OUTPUT\\artifacts') {
+      steps {
+        script {
+          echo "Copying built artifacts from target to ${env.BUILD_OUTPUT}\\artifacts"
+          bat """
+            REM ensure artifacts subfolder exists
+            if not exist "${env.BUILD_OUTPUT}\\artifacts" mkdir "${env.BUILD_OUTPUT}\\artifacts"
+
+            REM list target (debug)
+            if exist "%WORKSPACE%\\target" (
+              echo Listing target contents:
+              dir "%WORKSPACE%\\target\\*" /S /B
+              REM copy only jar/war/zip from target into artifacts folder (preserve subdirs)
+              robocopy "%WORKSPACE%\\target" "${env.BUILD_OUTPUT}\\artifacts" *.jar *.war *.zip /E /COPY:DAT /R:2 /W:2
+            ) else (
+              echo "No target folder found; skipping artifact copy."
+            )
+
+            set RC=%ERRORLEVEL%
+            echo Robocopy (artifacts) exit code: %RC%
+            if %RC% LEQ 7 (
+              echo "Artifact copy ok (code %RC%)."
+            ) else (
+              echo "Artifact copy FAILED (code %RC%)."
+              exit /b %RC%
+            )
+          """
+        }
+      }
+    }
+
+    stage('Archive (Jenkins)') {
+      steps {
+        // Always archive jars so you can download from Jenkins UI
+        archiveArtifacts artifacts: 'target/**/*.jar, target/**/*.war', fingerprint: true
+      }
+    }
   } // end stages
 
   post {
     success {
-      echo 'Build completed successfully and artifacts archived / copied.'
+      echo "Pipeline finished: workspace and artifacts copied to ${env.BUILD_OUTPUT}"
     }
     failure {
-      echo 'Build or artifact copy failed — check console output.'
+      echo "Pipeline failed — check console for robocopy or mvn errors."
     }
   }
 }
