@@ -66,7 +66,99 @@ pipeline {
           whoami || echo whoami failed
           echo.
           echo Workspace:
-          echo %WORKSPACE%
+          echo %WORKSPACE%pipeline {
+  agent { label 'windows' } // change to your Windows agent label if needed
+  environment {
+    BUILD_OUTPUT = "C:\\Users\\swethasuresh\\build"
+    MVN_CMD = 'mvn'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Verify') {
+      steps {
+        bat '''
+          echo whoami:
+          whoami || echo whoami failed
+          echo java version:
+          java -version || echo java not found
+          %MVN_CMD% -v || echo mvn not found
+        '''
+      }
+    }
+
+    stage('Build (compile only — no package)') {
+      steps {
+        // compile sources but do NOT run package phase, so no .jar/.war created
+        bat '''
+          pushd "%WORKSPACE%"
+          echo Running mvn compile (no package)
+          %MVN_CMD% -B clean compile > mvn-compile.log 2>&1
+          set RC=%ERRORLEVEL%
+          echo MAVEN RETURN CODE: %RC%
+          if %RC% NEQ 0 (
+            echo ===== MAVEN COMPILE FAILED - printing tail of mvn-compile.log =====
+            powershell -Command "if (Test-Path '.\\mvn-compile.log') { Get-Content '.\\mvn-compile.log' -Tail 200 | Out-String | Write-Host } else { Write-Host 'mvn-compile.log not present' }"
+            exit /b %RC%
+          )
+          echo MAVEN compile succeeded
+          popd
+        '''
+      }
+    }
+
+    stage('Safe Debug Dump (non-failing)') {
+      steps {
+        bat '''
+          echo ==== SAFE DEBUG DUMP ====
+          whoami || echo whoami failed
+          echo Workspace: %WORKSPACE%
+          echo Build output dir listing:
+          if exist "%BUILD_OUTPUT%" ( dir "%BUILD_OUTPUT%" /B ) else ( echo BUILD_OUTPUT not present )
+          echo ==== END SAFE DEBUG DUMP ====
+          exit /b 0
+        '''
+      }
+    }
+
+    stage('Verify BUILD_OUTPUT') {
+      steps {
+        bat """
+          if not exist "%BUILD_OUTPUT%" mkdir "%BUILD_OUTPUT%" || echo mkdir returned %ERRORLEVEL%
+          echo TEST > "%BUILD_OUTPUT%\\\\jenkins-write-test.txt" || echo write failed %ERRORLEVEL%
+          dir "%BUILD_OUTPUT%" /B || echo cannot list BUILD_OUTPUT
+        """
+      }
+    }
+
+    stage('Copy Workspace (exclude target/artifacts)') {
+      steps {
+        // Exclude target so no built artifacts (if any) are copied
+        bat """
+          robocopy "%WORKSPACE%" "%BUILD_OUTPUT%" /E /COPY:DAT /R:2 /W:2 /XD ".git" "target"
+          set RC=%ERRORLEVEL%
+          if %RC% GEQ 8 (
+            echo ROBocopy workspace FAILED with exit code %RC%
+            exit /b %RC%
+          ) else (
+            echo ROBocopy workspace completed (exit code %RC%)
+          )
+        """
+      }
+    }
+  }
+
+  post {
+    success { echo "Pipeline succeeded. No artifacts were packaged or archived. Check ${env.BUILD_OUTPUT}" }
+    failure { echo "Pipeline failed; inspect logs." }
+  }
+}
+
           echo.
           echo mvn version:
           mvn -v || echo mvn not available
