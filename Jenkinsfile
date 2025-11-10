@@ -3,103 +3,104 @@ pipeline {
 
   environment {
     BUILD_OUTPUT = "C:\\Users\\swethasuresh\\build"
+    MAVEN_TOOL = 'Maven3' // name your Maven install in Jenkins Global Tool Config
   }
 
   stages {
     stage('Checkout') {
       steps {
-        // Checkout repository to the workspace on the agent
-        git branch: 'master',
-            credentialsId: 'gitrepo',
-            url: 'https://github.com/swetha-200160/java-project.git'
+        checkout([
+          $class: 'GitSCM',
+          branches: [[name: '*/master']],
+          userRemoteConfigs: [[
+            url: 'https://github.com/swetha-200160/java-project.git',
+            credentialsId: 'gitrepo'
+          ]]
+        ])
+      }
+    }
+
+    stage('Prepare') {
+      steps {
+        script {
+          // resolve MAVEN_HOME via Jenkins tool
+          def mvnHome = tool env.MAVEN_TOOL
+          env.MVN_HOME = mvnHome
+          echo "Using Maven: ${env.MVN_HOME}"
+        }
+        bat 'java -version || echo "java not found"'
+        bat '"%MVN_HOME%\\bin\\mvn" -v || echo "mvn not found or failed"'
       }
     }
 
     stage('Build') {
       steps {
-        echo 'Running mvn package to produce artifacts...'
-        // Run mvn and keep console output in mvn-build.log for debugging
-        bat '''
-          mvn -B clean package -DskipTests > mvn-build.log 2>&1
-          type mvn-build.log | findstr /R /C:"Building .*jar:" /C:"BUILD SUCCESS" || echo "mvn messages not found in log"
-        '''
+        script {
+          // Use pushd/popd to handle spaces in paths reliably
+          bat """
+            pushd "%WORKSPACE%"
+            echo Running mvn in: %CD%
+            "%MVN_HOME%\\bin\\mvn" -B clean package -DskipTests > mvn-build.log 2>&1
+            type mvn-build.log | findstr /R /C:"Building .*jar:" /C:"BUILD SUCCESS" || echo "mvn messages not found in log"
+            popd
+          """
+        }
       }
     }
 
-    stage('Copy: entire workspace -> BUILD_OUTPUT') {
+    stage('Show build output') {
+      steps {
+        bat """
+          echo ==== workspace listing (top) ====
+          dir "%WORKSPACE%\\*" /B
+          echo ==== target listing if exists ====
+          if exist "%WORKSPACE%\\target" (
+            dir "%WORKSPACE%\\target\\*" /S /B
+          ) else (
+            echo "No target folder found"
+          )
+          echo ==== tail of mvn-build.log ====
+          if exist "%WORKSPACE%\\mvn-build.log" (
+            more +0 "%WORKSPACE%\\mvn-build.log" | findstr /R /C:"BUILD SUCCESS" /C:"BUILD FAILURE" /C:"ERROR"
+          ) else (
+            echo "mvn-build.log not found"
+          )
+        """
+      }
+    }
+
+    stage('Archive artifacts') {
+      steps {
+        archiveArtifacts artifacts: 'target/**/*.jar, target/**/*.war', fingerprint: true, onlyIfSuccessful: true
+      }
+    }
+
+    stage('Copy workspace and artifacts') {
       steps {
         script {
-          echo "Copying workspace to ${env.BUILD_OUTPUT} (preserve folder structure)"
           bat """
-            REM show current workspace and check content
-            echo Workspace is: %WORKSPACE%
-            dir "%WORKSPACE%\\*" /S /B | more
-
             REM ensure destination exists
-            if not exist "${env.BUILD_OUTPUT}" mkdir "${env.BUILD_OUTPUT}"
+            if not exist "${BUILD_OUTPUT}" mkdir "${BUILD_OUTPUT}"
 
-            REM copy EVERYTHING from workspace to BUILD_OUTPUT except .git
-            REM /E = copy subdirs, including empty ones; /COPY:DAT preserve data/attributes/timestamps
-            robocopy "%WORKSPACE%" "${env.BUILD_OUTPUT}" /E /COPY:DAT /R:2 /W:2 /XD ".git" ".git\\"
+            REM copy entire workspace (except .git) safely
+            robocopy "%WORKSPACE%" "${BUILD_OUTPUT}" /E /COPY:DAT /R:2 /W:2 /XD ".git" ".git\\"
 
-            set RC=%ERRORLEVEL%
-            echo Robocopy (workspace) exit code: %RC%
-            if %RC% LEQ 7 (
-              echo "Workspace copy ok (code %RC%)."
-            ) else (
-              echo "Workspace copy FAILED (code %RC%)."
-              exit /b %RC%
-            )
-          """
-        }
-      }
-    }
-
-    stage('Copy: target artifacts -> BUILD_OUTPUT\\artifacts') {
-      steps {
-        script {
-          echo "Copying built artifacts from target to ${env.BUILD_OUTPUT}\\artifacts"
-          bat """
-            REM ensure artifacts subfolder exists
-            if not exist "${env.BUILD_OUTPUT}\\artifacts" mkdir "${env.BUILD_OUTPUT}\\artifacts"
-
-            REM list target (debug)
+            REM copy only artifacts (jars/wars) into BUILD_OUTPUT\\artifacts
+            if not exist "${BUILD_OUTPUT}\\\\artifacts" mkdir "${BUILD_OUTPUT}\\\\artifacts"
             if exist "%WORKSPACE%\\target" (
-              echo Listing target contents:
-              dir "%WORKSPACE%\\target\\*" /S /B
-              REM copy only jar/war/zip from target into artifacts folder (preserve subdirs)
-              robocopy "%WORKSPACE%\\target" "${env.BUILD_OUTPUT}\\artifacts" *.jar *.war *.zip /E /COPY:DAT /R:2 /W:2
-            ) else (
-              echo "No target folder found; skipping artifact copy."
+              robocopy "%WORKSPACE%\\target" "${BUILD_OUTPUT}\\\\artifacts" *.jar *.war *.zip /E /COPY:DAT /R:2 /W:2
             )
 
-            set RC=%ERRORLEVEL%
-            echo Robocopy (artifacts) exit code: %RC%
-            if %RC% LEQ 7 (
-              echo "Artifact copy ok (code %RC%)."
-            ) else (
-              echo "Artifact copy FAILED (code %RC%)."
-              exit /b %RC%
-            )
+            REM print robocopy exitcodes
+            echo Robocopy exit code: %ERRORLEVEL%
           """
         }
       }
     }
-
-    stage('Archive (Jenkins)') {
-      steps {
-        // Always archive jars so you can download from Jenkins UI
-        archiveArtifacts artifacts: 'target/**/*.jar, target/**/*.war', fingerprint: true
-      }
-    }
-  } // end stages
+  }
 
   post {
-    success {
-      echo "Pipeline finished: workspace and artifacts copied to ${env.BUILD_OUTPUT}"
-    }
-    failure {
-      echo "Pipeline failed — check console for robocopy or mvn errors."
-    }
+    success { echo 'Pipeline succeeded — check BUILD_OUTPUT for copied files.' }
+    failure { echo 'Pipeline failed — see console for errors.' }
   }
 }
