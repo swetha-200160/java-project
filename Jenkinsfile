@@ -21,45 +21,59 @@ pipeline {
       }
     }
 
-    stage('Copy Build Files (robocopy whole workspace)') {
-      steps {
-        script {
-          echo "Workspace: ${env.WORKSPACE}"
-          bat """
-            REM --- debug: show current folder and list all files in workspace (recursive) ---
-            echo Current dir:
-            cd
-            echo.
-            echo Listing workspace contents (first 200 lines):
-            dir "%WORKSPACE%\\*" /S /B | more
+    stage('Copy Build Artifacts (target -> BUILD_OUTPUT)') {
+  steps {
+    script {
+      echo "Workspace: ${env.WORKSPACE}"
+      bat """
+        REM show current dir and java/mvn version for debug
+        echo Current dir:
+        cd
+        echo.
 
-            REM --- ensure destination exists ---
-            if not exist "${env.BUILD_OUTPUT}" mkdir "${env.BUILD_OUTPUT}"
+        REM show whether target exists and its contents
+        echo ==== Does target exist? ====
+        if exist "%WORKSPACE%\\target" (
+          echo target exists
+          echo ==== Listing target (recursive) ====
+          dir "%WORKSPACE%\\target\\*" /S /B
+        ) else (
+          echo target directory does NOT exist
+        )
 
-            REM --- robocopy entire workspace to destination ---
-            REM /MIR mirrors (be careful: will delete extra files in destination)
-            REM /COPY:DAT copies Data, Attributes, Timestamps
-            REM /DCOPY:T preserve directory timestamps
-            REM /R:2 /W:2 retry 2 times, wait 2 seconds
-            robocopy "%WORKSPACE%" "${env.BUILD_OUTPUT}" /MIR /COPY:DAT /DCOPY:T /R:2 /W:2 /XD ".git" ".git\\"
+        REM show last few lines of mvn log if present
+        if exist "%WORKSPACE%\\mvn-build.log" (
+          echo ===== recent mvn log =====
+          more +0 "%WORKSPACE%\\mvn-build.log" | findstr /R /C:"Building jar:" /C:"BUILD SUCCESS" || echo "no mvn messages found"
+        )
 
-            REM capture robocopy exit code
-            set RC=%ERRORLEVEL%
-            echo Robocopy exit code: %RC%
+        REM ensure destination exists
+        if not exist "${env.BUILD_OUTPUT}" mkdir "${env.BUILD_OUTPUT}"
 
-            REM Robocopy exit codes: 0=no files copied, 1=some files copied, 0-7 are commonly OK
-            if %RC% LEQ 7 (
-              echo Robocopy finished with acceptable code %RC%. Exiting success.
-              exit /b 0
-            )
+        REM copy only jars and zips from target (preserve directory structure)
+        REM Using robocopy from the target folder to the destination
+        if exist "%WORKSPACE%\\target" (
+          robocopy "%WORKSPACE%\\target" "${env.BUILD_OUTPUT}" *.jar *.war *.zip /E /COPY:DAT /R:2 /W:2
+        ) else (
+          echo "Skipping robocopy: target not present"
+        )
 
-            echo Robocopy FAILED with code %RC%. Exiting with failure.
-            exit /b %RC%
-          """
-        }
-      }
+        REM capture robocopy exit code
+        set RC=%ERRORLEVEL%
+        echo Robocopy exit code: %RC%
+
+        REM treat 0-7 as success
+        if %RC% LEQ 7 (
+          echo "Artifacts copy finished with acceptable code %RC%"
+          exit /b 0
+        )
+        echo "Robocopy FAILED with code %RC%"
+        exit /b %RC%
+      """
     }
-  } // end stages
+  }
+}
+
 
   post {
     success {
