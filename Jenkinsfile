@@ -81,7 +81,6 @@ pipeline {
 
     stage('Copy workspace -> BUILD_OUTPUT') {
       steps {
-        // Run robocopy and normalize exit codes: treat 0..7 as success (exit 0), >=8 as failure (exit RC)
         bat '''
           robocopy "%WORKSPACE%" "%BUILD_OUTPUT%" /E /COPY:DAT /R:2 /W:2 /XD ".git"
           set RC=%ERRORLEVEL%
@@ -119,7 +118,7 @@ pipeline {
         '''
       }
     }
-  }
+  } // end stages
 
   post {
     success {
