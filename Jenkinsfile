@@ -7,9 +7,7 @@ pipeline {
 
   stages {
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
+      steps { checkout scm }
     }
 
     stage('Verify env') {
@@ -118,7 +116,7 @@ pipeline {
         '''
       }
     }
-  } // end stages
+  } // stages
 
   post {
     success {
