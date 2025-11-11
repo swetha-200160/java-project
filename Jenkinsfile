@@ -8,7 +8,6 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        // Declarative does an automatic checkout for multibranch; explicit here for clarity.
         checkout scm
       }
     }
@@ -27,7 +26,6 @@ pipeline {
 
     stage('Build') {
       steps {
-        // Use MAVEN_HOME if set, otherwise rely on mvn from PATH
         bat '''
           pushd "%WORKSPACE%"
           echo Running build in %CD%
@@ -83,13 +81,17 @@ pipeline {
 
     stage('Copy workspace -> BUILD_OUTPUT') {
       steps {
+        // Run robocopy and normalize exit codes: treat 0..7 as success (exit 0), >=8 as failure (exit RC)
         bat '''
           robocopy "%WORKSPACE%" "%BUILD_OUTPUT%" /E /COPY:DAT /R:2 /W:2 /XD ".git"
           set RC=%ERRORLEVEL%
-          echo ROBocopy workspace exit code: %RC%
+          echo ROBocopy workspace original exit code: %RC%
           if %RC% GEQ 8 (
-            echo "ROBOCOPY FAILED with exit code %RC%"
+            echo "ROBOCOPY workspace FAILED with exit code %RC%"
             exit /b %RC%
+          ) else (
+            echo "ROBOCOPY workspace completed (treated as success) with code %RC%"
+            exit /b 0
           )
         '''
       }
@@ -102,18 +104,22 @@ pipeline {
           if exist "%WORKSPACE%\\target" (
             robocopy "%WORKSPACE%\\target" "%BUILD_OUTPUT%\\artifacts" *.jar *.war *.zip /E /COPY:DAT /R:2 /W:2
             set RC=%ERRORLEVEL%
-            echo ROBocopy artifacts exit code: %RC%
+            echo ROBocopy artifacts original exit code: %RC%
             if %RC% GEQ 8 (
               echo "ROBOCOPY (artifacts) FAILED with exit code %RC%"
               exit /b %RC%
+            ) else (
+              echo "ROBOCOPY (artifacts) completed (treated as success) with code %RC%"
+              exit /b 0
             )
           ) else (
             echo "No target found; nothing to copy"
+            exit /b 0
           )
         '''
       }
     }
-  } // end stages
+  }
 
   post {
     success {
