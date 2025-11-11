@@ -8,6 +8,7 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
+        // Declarative does an automatic checkout for multibranch; explicit here for clarity.
         checkout scm
       }
     }
@@ -26,10 +27,10 @@ pipeline {
 
     stage('Build') {
       steps {
+        // Use MAVEN_HOME if set, otherwise rely on mvn from PATH
         bat '''
           pushd "%WORKSPACE%"
           echo Running build in %CD%
-
           if defined MAVEN_HOME (
             echo Using MAVEN_HOME: %MAVEN_HOME%
             "%MAVEN_HOME%\\bin\\mvn" -B -DskipTests=true clean package > mvn-build.log 2>&1
@@ -37,10 +38,8 @@ pipeline {
             echo MAVEN_HOME not defined — trying mvn from PATH
             mvn -B -DskipTests=true clean package > mvn-build.log 2>&1
           )
-
           set RC=%ERRORLEVEL%
           echo MAVEN RETURN CODE: %RC%
-
           if %RC% NEQ 0 (
             echo ===== MAVEN BUILD FAILED - TAIL (200 lines) =====
             powershell -Command "if (Test-Path .\\mvn-build.log) { Get-Content .\\mvn-build.log -Tail 200 | Out-String | Write-Host } else { Write-Host 'mvn-build.log NOT FOUND' }"
@@ -63,6 +62,12 @@ pipeline {
           echo ==== mvn-build.log tail ====
           if exist "%WORKSPACE%\\mvn-build.log" ( powershell -Command "Get-Content .\\mvn-build.log -Tail 100 | Out-String | Write-Host" ) else ( echo "mvn-build.log not present" )
         '''
+      }
+    }
+
+    stage('Archive artifacts') {
+      steps {
+        archiveArtifacts artifacts: 'target/**/*.jar, target/**/*.war', allowEmptyArchive: true, fingerprint: true
       }
     }
 
@@ -108,7 +113,7 @@ pipeline {
         '''
       }
     }
-  }
+  } // end stages
 
   post {
     success {
