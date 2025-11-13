@@ -19,7 +19,7 @@ pipeline {
         // assumes mvn on agent PATH
         bat 'mvn -B -DskipTests clean package'
       }
-      post { always { junit '**\\target\\surefire-reports\\*.xml' } }
+      post { always { junit 'C:\\User\\swethasuresh\\data\\pom.xml'} }
     }
 
     stage('SonarQube Analysis') {
