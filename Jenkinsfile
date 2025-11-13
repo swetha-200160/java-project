@@ -91,10 +91,18 @@ if %ERRORLEVEL% NEQ 0 ( exit /b 1 ) else ( exit /b 0 )
           }
         }
       }
-      post {
-        always {
-          // Collect test reports if any (will warn if none found)
-          junit '**\\target\\surefire-reports\\*.xml'
+     stage('Build') {
+  steps {
+    bat 'mvn -B -DskipTests clean package'
+  }
+  post {
+    always {
+      // Collect test reports if any (won’t fail if none exist)
+      junit allowEmptyResults: true, testResults: '**\\target\\surefire-reports\\*.xml'
+    }
+  }
+}
+
         }
       }
     }
@@ -102,7 +110,7 @@ if %ERRORLEVEL% NEQ 0 ( exit /b 1 ) else ( exit /b 0 )
     stage('SonarQube analysis') {
       steps {
         // Bind Sonar token at runtime (safer than putting credential in environment)
-        withCredentials([string(credentialsId: "${SONAR_CRED_ID}", variable: 'SONAR_TOKEN')]) {
+        withCredentials([string(credentialsId: 'sonarqube', variable: 'sonar')]) {
           bat """
 @echo off
 rem find POM dir and run sonar:sonar from that module (handles spaces)
