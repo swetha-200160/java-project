@@ -1,20 +1,13 @@
-<project>
-  <modelVersion>4.0.0</modelVersion>
-
-  <groupId>com.example</groupId>
-  <artifactId>my-java-project</artifactId>
-  <version>1.0.0</version>
-
-  <build>
-    <plugins>
-
-      <!-- ✅ Add this sonar-maven-plugin -->
-      <plugin>
-        <groupId>org.sonarsource.scanner.maven</groupId>
-        <artifactId>sonar-maven-plugin</artifactId>
-        <version>3.10.0.2594</version>
-      </plugin>
-
-    </plugins>
-  </build>
-</project>
+<build>
+  <plugins>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-compiler-plugin</artifactId>
+      <version>3.13.0</version>
+      <configuration>
+        <source>11</source>
+        <target>11</target>
+      </configuration>
+    </plugin>
+  </plugins>
+</build>
