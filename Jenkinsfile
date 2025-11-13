@@ -138,8 +138,7 @@ mvn -B sonar:sonar -Dsonar.projectKey=%SONAR_PROJECT_KEY% -Dsonar.login=%SONAR_T
       }
     }
   }
-}
-
+    }
         }
       }
     }
