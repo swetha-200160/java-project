@@ -2,101 +2,131 @@ pipeline {
   agent any
 
   environment {
-    // change these to match your Jenkins/Sonar config if different
-    SONARQUBE_SERVER   = 'SonarQube'    // name configured in Manage Jenkins -> Configure System
-    SONAR_PROJECT_KEY  = 'my-java-project'
-    SONAR_TOKEN_ID     = 'sonarqube'    // Jenkins Secret Text credential id (Sonar token)
-    GIT_REPO_URL       = 'https://github.com/swetha-200160/java-project.git'
-    GIT_BRANCH         = 'master'       // change to 'main' if your repo uses main
+    SONARQUBE_SERVER  = 'SonarQube'      // name in Manage Jenkins -> Configure System
+    SONAR_PROJECT_KEY = 'my-java-project'
+    SONAR_CRED_ID     = 'sonarqube'      // Secret Text credential id (Sonar token)
+    GIT_REPO_URL      = 'https://github.com/swetha-200160/java-project.git'
+    GIT_BRANCH        = 'master'         // change to main if needed
+    DEBUG_LOG         = 'mvn-debug.txt'
   }
 
   stages {
     stage('Checkout') {
       steps {
-        // if repo private, add credentialsId: 'gitrepo' to git() call
         git branch: "${GIT_BRANCH}", url: "${GIT_REPO_URL}"
       }
     }
 
-    stage('Agent / Tools check') {
+    stage('Agent tools / quick check') {
       steps {
         echo "Workspace: ${env.WORKSPACE}"
-        // show java/maven on agent to help debugging if they are missing
-        bat 'java -version || echo "java_not_found"'
-        bat 'mvn -v || echo "mvn_not_found"'
+        bat 'java -version || echo java_not_found'
+        bat 'mvn -v || echo maven_not_found'
       }
     }
 
-    stage('Find POM and Build') {
+    stage('Build (find POM, run mvn, capture debug on failure)') {
       steps {
-        // find the first pom.xml and run mvn in that folder (handles spaces)
-        bat '''
-@echo off
-setlocal enabledelayedexpansion
+        script {
+          // Try regular build first; if it fails run debug (-X) and archive log.
+          // Both attempts run in the same module directory (first found pom.xml).
+          echo "Running mvn -B -DskipTests clean package in the module that contains pom.xml..."
 
-set "POM_FILE="
+          // Run normal build and capture exit code
+          def rc = bat(
+            returnStatus: true,
+            script: '''
+@echo off
+rem find first pom.xml
+set "POM="
 for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
-  set "POM_FILE=%%~fF"
+  set "POM=%%~fF"
   goto :FOUND
 )
-
-echo ERROR: pom.xml not found in workspace
-endlocal
-exit /b 1
+echo ERROR: pom.xml not found
+exit /b 2
 
 :FOUND
 set "POM_DIR=%%~dpF"
-set "POM_DIR=!POM_DIR:~0,-1!"
-echo Found pom: "!POM_FILE!"
-echo Found dir: "!POM_DIR!"
-cd /d "!POM_DIR!"
-echo Running mvn in "%CD%"
+set "POM_DIR=%POM_DIR:~0,-1%"
+cd /d "%POM_DIR%"
+echo Building in "%CD%"
 mvn -B -DskipTests clean package
-endlocal
 '''
+          )
+
+          if (rc == 0) {
+            echo "Maven build succeeded."
+          } else {
+            echo "Maven build FAILED (exit ${rc}). Capturing full debug output with mvn -X ..."
+
+            // Run debug build (mvn -X) and redirect output into DEBUG_LOG
+            def rc2 = bat(
+              returnStatus: true,
+              script: """
+@echo off
+set "POM="
+for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
+  set "POM=%%~fF"
+  goto :FOUND
+)
+echo ERROR: pom.xml not found
+exit /b 2
+
+:FOUND
+set "POM_DIR=%%~dpF"
+set "POM_DIR=%POM_DIR:~0,-1%"
+cd /d "%POM_DIR%"
+echo Running mvn -X in "%CD%" (writing debug to ${env.DEBUG_LOG})
+mvn -X clean package > "${env.WORKSPACE}\\${env.DEBUG_LOG}" 2>&1
+if %ERRORLEVEL% NEQ 0 ( exit /b 1 ) else ( exit /b 0 )
+"""
+            )
+
+            // Archive the debug log for inspection
+            archiveArtifacts artifacts: "${env.DEBUG_LOG}", allowEmptyArchive: false
+
+            // Fail the pipeline with a helpful message and point to the archived debug log
+            error("Maven build failed. Full debug log archived: ${env.DEBUG_LOG}")
+          }
+        }
       }
       post {
         always {
-          // collect any test reports produced by the module
+          // Collect test reports if any (will warn if none found)
           junit '**\\target\\surefire-reports\\*.xml'
         }
       }
     }
 
-    stage('SonarQube Analysis') {
-      environment {
-        // bind Sonar token (Secret Text). Must be a literal id.
-        SONAR_AUTH_TOKEN = credentials("${SONAR_TOKEN_ID}")
-      }
+    stage('SonarQube analysis') {
       steps {
-        // run sonar from the same module folder (find POM dir again and execute)
-        bat '''
+        // Bind Sonar token at runtime (safer than putting credential in environment)
+        withCredentials([string(credentialsId: "${SONAR_CRED_ID}", variable: 'SONAR_TOKEN')]) {
+          bat """
 @echo off
-setlocal enabledelayedexpansion
-
-set "POM_DIR="
+rem find POM dir and run sonar:sonar from that module (handles spaces)
+set "POM="
 for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
-  set "POM_DIR=%%~dpF"
-  goto :FOUND_POM
+  set "POM=%%~fF"
+  goto :FOUND_S
 )
-
 echo ERROR: pom.xml not found
-endlocal
-exit /b 1
+exit /b 2
 
-:FOUND_POM
+:FOUND_S
+set "POM_DIR=%%~dpF"
 set "POM_DIR=%POM_DIR:~0,-1%"
 cd /d "%POM_DIR%"
 echo Running Sonar in "%CD%"
-mvn -B sonar:sonar -Dsonar.projectKey=%SONAR_PROJECT_KEY% -Dsonar.login=%SONAR_AUTH_TOKEN%
-endlocal
-'''
+mvn -B sonar:sonar -Dsonar.projectKey=%SONAR_PROJECT_KEY% -Dsonar.login=%SONAR_TOKEN%
+"""
+        }
       }
     }
 
     stage('Quality Gate') {
       steps {
-        // requires Sonar webhook configured to point at Jenkins /sonarqube-webhook/
         timeout(time: 5, unit: 'MINUTES') {
           waitForQualityGate abortPipeline: true
         }
@@ -105,7 +135,13 @@ endlocal
   }
 
   post {
-    success { echo '✅ Pipeline finished and SonarQube Quality Gate passed.' }
-    failure { echo '❌ Pipeline failed — check console output for details.' }
+    success { echo '✅ Pipeline succeeded and SonarQube Quality Gate passed.' }
+    failure {
+      echo '❌ Pipeline failed. Check the console and archived debug log (mvn-debug.txt) for details.'
+    }
+    always {
+      // keep the mvn-debug.txt if created
+      archiveArtifacts artifacts: "${env.DEBUG_LOG}", allowEmptyArchive: true
+    }
   }
 }
