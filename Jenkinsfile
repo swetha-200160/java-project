@@ -2,13 +2,14 @@ pipeline {
     agent any
 
     environment {
-        SONARQUBE_SERVER = 'SonarQube'    // SonarQube server name from Manage Jenkins -> Configure System
+        SONARQUBE_SERVER = 'SonarQube'
         SONAR_PROJECT_KEY = 'data-project'
     }
 
     stages {
         stage('Checkout') {
             steps {
+                // Use the correct .git URL (fixed .gitt -> .git)
                 git branch: 'master',
                     credentialsId: 'gitrepo',
                     url: 'https://github.com/swetha-200160/java-project.git'
@@ -24,7 +25,6 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv("${SONARQUBE_SERVER}") {
-                    // If you store a Sonar token in Jenkins as a secret text you can add -Dsonar.login=... here
                     bat "mvn sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY}"
                 }
             }
