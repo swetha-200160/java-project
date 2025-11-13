@@ -13,7 +13,7 @@ pipeline {
     stage('Checkout') {
       steps {
         // Use credentialsId if your repo is private (set credentials in Jenkins)
-        git branch: "${GIT_BRANCH}", url: "${GIT_REPO_URL}"
+        git branch: "master", url: "https://github.com/swetha-200160/java-project.git"
       }
     }
 
@@ -42,7 +42,7 @@ pipeline {
     stage('SonarQube Analysis') {
       environment {
         // bind secret text into SONAR_AUTH_TOKEN (literal id required)
-        SONAR_AUTH_TOKEN = credentials("${SONAR_TOKEN_ID}")
+        SONAR_AUTH_TOKEN = credentials("sonarqube")
       }
       steps {
         withSonarQubeEnv("${SONARQUBE_SERVER}") {
