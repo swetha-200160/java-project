@@ -27,11 +27,11 @@ pipeline {
     }
 
     stage('Find POM & Build') {
-      steps {
-        script {
-          echo "Locate pom.xml and run mvn clean package (skip tests)"
-          // run mvn, capture status
-          def rc = bat(returnStatus: true, script: '''
+  steps {
+    script {
+      echo "Locate pom.xml and run mvn clean package (skip tests)"
+      // run mvn, capture status
+      def rc = bat(returnStatus: true, script: '''
 @echo off
 set "POM="
 for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
@@ -43,19 +43,19 @@ exit /b 2
 :FOUND
 set "POM_DIR=%%~dpF"
 set "POM_DIR=%POM_DIR:~0,-1%"
-echo Found pom at %POM_DIR%\pom.xml
+echo Found pom at %POM_DIR%/pom.xml
 cd /d "%POM_DIR%"
 mvn -B -DskipTests clean package
 ''')
 
-          if (rc == 0) {
-            echo "Maven build succeeded."
-            // archive produced jar(s)
-            archiveArtifacts artifacts: '**\\target\\*.jar', allowEmptyArchive: false
-          } else {
-            echo "Maven build FAILED (exit ${rc}). Running debug mvn -X and archiving ${DEBUG_LOG}..."
-            // run debug and save to workspace root
-            bat """
+      if (rc == 0) {
+        echo "Maven build succeeded."
+        // archive produced jar(s)
+        archiveArtifacts artifacts: '**\\target\\*.jar', allowEmptyArchive: false
+      } else {
+        echo "Maven build FAILED (exit ${rc}). Running debug mvn -X and archiving ${DEBUG_LOG}..."
+        // run debug and save to workspace root
+        bat """
 @echo off
 set "POM="
 for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
@@ -70,18 +70,19 @@ set "POM_DIR=%POM_DIR:~0,-1%"
 cd /d "%POM_DIR%"
 mvn -X clean package > "${env.WORKSPACE}\\${DEBUG_LOG}" 2>&1
 """
-            archiveArtifacts artifacts: "${DEBUG_LOG}", allowEmptyArchive: false
-            error("Maven build failed. Debug log archived: ${DEBUG_LOG}")
-          }
-        }
-      }
-      post {
-        always {
-          // collect test reports (won't fail if none)
-          junit testResults: '**\\target\\surefire-reports\\*.xml', allowEmptyResults: true
-        }
+        archiveArtifacts artifacts: "${DEBUG_LOG}", allowEmptyArchive: false
+        error("Maven build failed. Debug log archived: ${DEBUG_LOG}")
       }
     }
+  }
+  post {
+    always {
+      // collect test reports (won't fail if none)
+      junit testResults: '**\\target\\surefire-reports\\*.xml', allowEmptyResults: true
+    }
+  }
+}
+
 
     stage('SonarQube Analysis') {
       when {
