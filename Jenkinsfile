@@ -140,7 +140,7 @@ mvn -B sonar:sonar -Dsonar.projectKey=%SONAR_PROJECT_KEY% -Dsonar.login=%SONAR_T
         }
       }
     }
-  }
+        }
 
   post {
     success { echo '✅ Pipeline succeeded and SonarQube Quality Gate passed.' }
