@@ -2,25 +2,27 @@ pipeline {
   agent any
 
   environment {
-    SONARQUBE_SERVER      = 'SonarQube'      // SonarQube server name from Manage Jenkins -> Configure System
-    SONAR_PROJECT_KEY     = 'data-project'   // change to your project key
-    SONAR_TOKEN_CREDENTIAL= 'sonarqube'      // Jenkins Secret Text credential ID containing Sonar token
-    GIT_CREDENTIALS_ID    = 'gitrepo'        // your Git credentials ID
+    // keep these as literals (strings)
+    SONARQUBE_SERVER       = 'SonarQube'        // Name in Manage Jenkins -> Configure System -> SonarQube servers
+    SONAR_PROJECT_KEY      = 'data-project'     // your Sonar project key
+    GIT_CREDENTIALS_ID     = 'gitrepo'          // your Git credentials ID
+    // bind the secret text into SONAR_AUTH_TOKEN using a literal credential id
+    SONAR_AUTH_TOKEN       = credentials('sonarqube')
   }
 
   stages {
     stage('Checkout') {
       steps {
         script {
-          // try common branches: master then main
+          // try master, then main
           def branchToUse = 'master'
           try {
             checkout([$class: 'GitSCM',
               branches: [[name: "refs/heads/${branchToUse}"]],
               userRemoteConfigs: [[url: 'https://github.com/swetha-200160/java-project.git', credentialsId: env.GIT_CREDENTIALS_ID]]
             ])
-          } catch(err) {
-            echo "master branch not found or checkout failed, trying main..."
+          } catch (err) {
+            echo "master not found or checkout failed, trying main..."
             branchToUse = 'main'
             checkout([$class: 'GitSCM',
               branches: [[name: "refs/heads/${branchToUse}"]],
@@ -45,7 +47,7 @@ pipeline {
     stage('Build') {
       steps {
         script {
-          // if pom not in root, adjust path here (e.g. 'cd subdir && mvn ...')
+          // adjust if your pom is in a subdirectory: bat 'cd subdir && mvn -B -DskipTests clean package'
           bat 'mvn -B -DskipTests clean package'
         }
       }
@@ -57,14 +59,13 @@ pipeline {
     }
 
     stage('SonarQube Analysis') {
-      environment {
-        SONAR_AUTH_TOKEN = credentials('sonarqube')
-      }
       steps {
+        // withSonarQubeEnv injects SONAR_HOST_URL or SONAR_HOST_URL (var name varies by plugin version)
         withSonarQubeEnv(env.SONARQUBE_SERVER) {
+          // Use Groovy expansion for project key, but use Windows %VAR% for runtime-injected env vars inside bat
           bat """
             mvn -B sonar:sonar ^
-              -Dsonar.projectKey=%data_PROJECT_KEY% ^
+              -Dsonar.projectKey=${env.data_project} ^
               -Dsonar.host.url=%http://localhost:9000/% ^
               -Dsonar.login=%sonarqube%
           """
