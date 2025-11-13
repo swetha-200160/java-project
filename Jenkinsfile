@@ -2,9 +2,9 @@ pipeline {
   agent any
 
   environment {
-    SONARQUBE_SERVER  = 'SonarQube'      // name in Manage Jenkins -> Configure System
+    SONARQUBE_SERVER  = 'SonarQube'
     SONAR_PROJECT_KEY = 'my-java-project'
-    SONAR_CRED_ID     = 'sonarqube'      // Jenkins Secret Text credential id
+    SONAR_CRED_ID     = 'sonarqube'    // Secret Text id in Jenkins
     GIT_REPO_URL      = 'https://github.com/swetha-200160/java-project.git'
     GIT_BRANCH        = 'master'
     DEBUG_LOG         = 'mvn-debug.txt'
@@ -13,73 +13,95 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        // Pull code from GitHub
+        echo "Checking out ${GIT_REPO_URL} (${GIT_BRANCH})"
         git branch: "${GIT_BRANCH}", url: "${GIT_REPO_URL}"
       }
     }
 
-    stage('Agent tools / quick check') {
+    stage('Agent check') {
       steps {
-        // Print Java & Maven version (helps debug missing tools)
         echo "Workspace: ${env.WORKSPACE}"
         bat 'java -version || echo java_not_found'
         bat 'mvn -v || echo maven_not_found'
       }
     }
 
-    stage('Build (find POM, run mvn, capture debug on failure)') {
+    stage('Find POM & Build') {
       steps {
         script {
-          // Try a normal Maven build first
+          echo "Locate pom.xml and run mvn clean package (skip tests)"
+          // run mvn, capture status
           def rc = bat(returnStatus: true, script: '''
 @echo off
+set "POM="
 for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
-  set "POM_DIR=%%~dpF"
-  goto :FOUND
+  set "POM=%%~fF"
+  goto FOUND
 )
 echo ERROR: pom.xml not found
 exit /b 2
-
 :FOUND
+set "POM_DIR=%%~dpF"
+set "POM_DIR=%POM_DIR:~0,-1%"
+echo Found pom at %POM_DIR%\pom.xml
 cd /d "%POM_DIR%"
-echo Building in "%CD%"
 mvn -B -DskipTests clean package
 ''')
 
-          if (rc != 0) {
-            // If build fails, rerun in debug (-X) mode and archive output
+          if (rc == 0) {
+            echo "Maven build succeeded."
+            // archive produced jar(s)
+            archiveArtifacts artifacts: '**\\target\\*.jar', allowEmptyArchive: false
+          } else {
+            echo "Maven build FAILED (exit ${rc}). Running debug mvn -X and archiving ${DEBUG_LOG}..."
+            // run debug and save to workspace root
             bat """
 @echo off
+set "POM="
+for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
+  set "POM=%%~fF"
+  goto FOUND2
+)
+echo ERROR: pom.xml not found
+exit /b 2
+:FOUND2
+set "POM_DIR=%%~dpF"
+set "POM_DIR=%POM_DIR:~0,-1%"
 cd /d "%POM_DIR%"
-mvn -X clean package > "${env.WORKSPACE}\\${env.DEBUG_LOG}" 2>&1
+mvn -X clean package > "${env.WORKSPACE}\\${DEBUG_LOG}" 2>&1
 """
-            archiveArtifacts artifacts: "${env.DEBUG_LOG}", allowEmptyArchive: false
-            error("❌ Maven build failed. Debug log archived: ${env.DEBUG_LOG}")
+            archiveArtifacts artifacts: "${DEBUG_LOG}", allowEmptyArchive: false
+            error("Maven build failed. Debug log archived: ${DEBUG_LOG}")
           }
         }
       }
       post {
         always {
-          // Publish test reports if available
+          // collect test reports (won't fail if none)
           junit testResults: '**\\target\\surefire-reports\\*.xml', allowEmptyResults: true
         }
       }
     }
 
-    stage('SonarQube analysis') {
+    stage('SonarQube Analysis') {
+      when {
+        expression { return currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+      }
       steps {
-        // Run static analysis with SonarQube
+        echo "Running Sonar (only if build succeeded)"
         withCredentials([string(credentialsId: "${SONAR_CRED_ID}", variable: 'SONAR_TOKEN')]) {
           bat """
 @echo off
+set "POM="
 for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
-  set "POM_DIR=%%~dpF"
-  goto :FOUND
+  set "POM=%%~fF"
+  goto FOUND_S
 )
 echo ERROR: pom.xml not found
 exit /b 2
-
-:FOUND
+:FOUND_S
+set "POM_DIR=%%~dpF"
+set "POM_DIR=%POM_DIR:~0,-1%"
 cd /d "%POM_DIR%"
 mvn -B sonar:sonar -Dsonar.projectKey=%SONAR_PROJECT_KEY% -Dsonar.login=%SONAR_TOKEN%
 """
@@ -89,7 +111,6 @@ mvn -B sonar:sonar -Dsonar.projectKey=%SONAR_PROJECT_KEY% -Dsonar.login=%SONAR_T
 
     stage('Quality Gate') {
       steps {
-        // Wait up to 5 mins for SonarQube Quality Gate result
         timeout(time: 5, unit: 'MINUTES') {
           waitForQualityGate abortPipeline: true
         }
@@ -98,11 +119,8 @@ mvn -B sonar:sonar -Dsonar.projectKey=%SONAR_PROJECT_KEY% -Dsonar.login=%SONAR_T
   }
 
   post {
-    success { echo '✅ Pipeline succeeded and SonarQube Quality Gate passed.' }
-    failure { echo '❌ Pipeline failed. Check console and mvn-debug.txt for details.' }
-    always {
-      // Save the debug log (if exists)
-      archiveArtifacts artifacts: "${env.DEBUG_LOG}", allowEmptyArchive: true
-    }
+    success { echo '✅ Pipeline succeeded.' }
+    failure { echo '❌ Pipeline failed — check mvn-debug.txt (artifact) and console output.' }
+    always { archiveArtifacts artifacts: "${DEBUG_LOG}", allowEmptyArchive: true }
   }
 }
