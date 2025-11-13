@@ -2,49 +2,72 @@ pipeline {
   agent any
 
   environment {
-    GIT_CREDENTIALS = 'gitrepo'
-    SONARQUBE_SERVER = 'SonarQube'
+    SONARQUBE_SERVER  = 'SonarQube'
     SONAR_PROJECT_KEY = 'my-java-project'
-    SONAR_AUTH_TOKEN = credentials('sonarqube-token')
-    MODULE_DIR = 'jp 1'   // change if different
+    SONAR_TOKEN_ID    = 'sonarqube'  // change to your credential id
   }
 
   stages {
     stage('Checkout') {
       steps {
-        git branch: 'main', credentialsId: "${GIT_CREDENTIALS}", url: 'https://github.com/swetha-200160/java-project.git'
+        git branch: 'main', url: 'https://github.com/swetha-200160/java-project.git'
       }
     }
 
-    stage('Build') {
+    stage('Find module & Build (safe)') {
       steps {
-        dir("${MODULE_DIR}") {
-          // remove -DskipTests if you want tests to run and produce reports
-          bat 'mvn -B -DskipTests clean package'
-        }
+        bat '''
+@echo off
+rem find the first pom.xml and determine its directory
+set "FOUND_DIR="
+for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
+  set "FOUND=%%~fF"
+  rem get directory of the found pom
+  set "FOUND_DIR=%%~dpF"
+  goto :FOUND_POM
+)
+echo ERROR: pom.xml not found in workspace
+exit /b 1
+
+:FOUND_POM
+rem remove trailing backslash
+set "FOUND_DIR=%FOUND_DIR:~0,-1%"
+echo Found pom in "%FOUND_DIR%"
+rem validate folder exists (defensive)
+if not exist "%FOUND_DIR%" (
+  echo ERROR: found directory does not exist: "%FOUND_DIR%"
+  exit /b 1
+)
+cd /d "%FOUND_DIR%"
+echo Running mvn in %CD%
+mvn -B -DskipTests clean package
+'''
       }
       post {
         always {
-          // Collect test reports from the module (works with spaces in name)
-          junit "${MODULE_DIR}\\**\\target\\surefire-reports\\*.xml"
+          junit '**\\target\\surefire-reports\\*.xml'
         }
       }
     }
 
-    stage('SonarQube Analysis') {
+    stage('Sonar') {
       steps {
-        dir("${MODULE_DIR}") {
-          withSonarQubeEnv("${SONARQUBE_SERVER}") {
-            bat "mvn -B sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.login=%SONAR_AUTH_TOKEN%"
-          }
-        }
-      }
-    }
+        withCredentials([string(credentialsId: "${SONAR_TOKEN_ID}", variable: 'SONAR_AUTH_TOKEN')]) {
+          bat '''
+@echo off
+for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
+  set "FOUND_DIR=%%~dpF"
+  goto :FOUND_POM
+)
+echo ERROR: pom.xml not found
+exit /b 1
 
-    stage('Quality Gate') {
-      steps {
-        timeout(time:5, unit:'MINUTES') {
-          waitForQualityGate abortPipeline: true
+:FOUND_POM
+set "FOUND_DIR=%FOUND_DIR:~0,-1%"
+cd /d "%FOUND_DIR%"
+echo Running Sonar in %CD%
+mvn -B sonar:sonar -Dsonar.projectKey=%SONAR_PROJECT_KEY% -Dsonar.login=%SONAR_AUTH_TOKEN%
+'''
         }
       }
     }
