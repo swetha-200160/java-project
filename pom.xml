@@ -3,16 +3,12 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
                              https://maven.apache.org/xsd/maven-4.0.0.xsd">
-  
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.example</groupId>
   <artifactId>java-project</artifactId>
   <version>1.0.0</version>
   <packaging>jar</packaging>
-
-  <name>java-project</name>
-  <description>Sample Java project for Jenkins + SonarQube</description>
 
   <properties>
     <java.version>11</java.version>
@@ -23,7 +19,14 @@
   </properties>
 
   <dependencies>
-    <!-- Example test dependency -->
+    <!-- Gson for JSON parsing used by the code -->
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+      <version>2.10.1</version>
+    </dependency>
+
+    <!-- test dependency -->
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
@@ -34,7 +37,6 @@
 
   <build>
     <plugins>
-      <!-- Compiler plugin -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
@@ -45,7 +47,6 @@
         </configuration>
       </plugin>
 
-      <!-- Surefire for test reports -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
@@ -54,8 +55,6 @@
           <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
         </configuration>
       </plugin>
-
     </plugins>
   </build>
-
 </project>
