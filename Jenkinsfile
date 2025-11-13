@@ -27,11 +27,11 @@ pipeline {
     }
 
     stage('Find POM & Build') {
-  steps {
-    script {
-      echo "Locate pom.xml and run mvn clean package (skip tests)"
-      // run mvn, capture status
-      def rc = bat(returnStatus: true, script: '''
+      steps {
+        script {
+          echo "Locate pom.xml and run mvn clean package (skip tests)"
+          // run mvn, capture status
+          def rc = bat(returnStatus: true, script: '''
 @echo off
 set "POM="
 for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
@@ -48,14 +48,14 @@ cd /d "%POM_DIR%"
 mvn -B -DskipTests clean package
 ''')
 
-      if (rc == 0) {
-        echo "Maven build succeeded."
-        // archive produced jar(s)
-        archiveArtifacts artifacts: '**\\target\\*.jar', allowEmptyArchive: false
-      } else {
-        echo "Maven build FAILED (exit ${rc}). Running debug mvn -X and archiving ${DEBUG_LOG}..."
-        // run debug and save to workspace root
-        bat """
+          if (rc == 0) {
+            echo "Maven build succeeded."
+            // archive produced jar(s)
+            archiveArtifacts artifacts: '**\\target\\*.jar', allowEmptyArchive: false
+          } else {
+            echo "Maven build FAILED (exit ${rc}). Running debug mvn -X and archiving ${DEBUG_LOG}..."
+            // run debug and save to workspace root
+            bat """
 @echo off
 set "POM="
 for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
@@ -70,19 +70,18 @@ set "POM_DIR=%POM_DIR:~0,-1%"
 cd /d "%POM_DIR%"
 mvn -X clean package > "${env.WORKSPACE}\\${DEBUG_LOG}" 2>&1
 """
-        archiveArtifacts artifacts: "${DEBUG_LOG}", allowEmptyArchive: false
-        error("Maven build failed. Debug log archived: ${DEBUG_LOG}")
+            archiveArtifacts artifacts: "${DEBUG_LOG}", allowEmptyArchive: false
+            error("Maven build failed. Debug log archived: ${DEBUG_LOG}")
+          }
+        }
+      }
+      post {
+        always {
+          // collect test reports (won't fail if none)
+          junit testResults: '**\\target\\surefire-reports\\*.xml', allowEmptyResults: true
+        }
       }
     }
-  }
-  post {
-    always {
-      // collect test reports (won't fail if none)
-      junit testResults: '**\\target\\surefire-reports\\*.xml', allowEmptyResults: true
-    }
-  }
-}
-
 
     stage('SonarQube Analysis') {
       when {
@@ -111,34 +110,28 @@ mvn -B sonar:sonar -Dsonar.projectKey=%SONAR_PROJECT_KEY% -Dsonar.login=%SONAR_T
     }
 
     stage('Quality Gate') {
-  steps {
-    script {
-      echo "Waiting for SonarQube Quality Gate (timeout 10m)..."
-      try {
-        timeout(time: 10, unit: 'MINUTES') {
-          // waitForQualityGate requires the 'Pipeline: SonarQube' plugin and a configured webhook
-          def qg = waitForQualityGate(abortPipeline: false) // don't auto-abort so we can log
-          if (qg == null) {
-            error("waitForQualityGate returned null — most likely Sonar webhook never reached Jenkins or analysis did not start. Check Sonar webhook & analysis status.")
-          } else {
-            echo "Quality gate status: ${qg.status}"
-            if (qg.status == 'OK') {
-              echo "Quality Gate PASSED."
-            } else {
-              // Fail or abort depending on your policy:
-              error("Quality Gate FAILED with status: ${qg.status}. Failing pipeline.")
+      steps {
+        script {
+          echo "Waiting for SonarQube Quality Gate (timeout 10m)..."
+          try {
+            timeout(time: 10, unit: 'MINUTES') {
+              def qg = waitForQualityGate(abortPipeline: false)
+              if (qg == null) {
+                error("waitForQualityGate returned null — webhook may not have reached Jenkins or analysis didn't run.")
+              } else {
+                echo "Quality gate status: ${qg.status}"
+                if (qg.status == 'OK') {
+                  echo "Quality Gate PASSED."
+                } else {
+                  error("Quality Gate FAILED with status: ${qg.status}. Failing pipeline.")
+                }
+              }
             }
+          } catch (exc) {
+            echo "ERROR while waiting for Quality Gate: ${exc}"
+            echo "Common causes: Sonar webhook not configured, Sonar analysis didn't run, Sonar token/project key mismatch, or Jenkins unreachable from Sonar."
+            error("Quality Gate stage failed. See console and Sonar server for details.")
           }
-        }
-      } catch(exc) {
-        // provide actionable message
-        echo "ERROR while waiting for Quality Gate: ${exc}"
-        echo "Common causes: Sonar webhook not configured, Sonar analysis didn't run, Sonar token or project key mismatch, or Jenkins can't receive webhook."
-        error("Quality Gate stage failed. See console and Sonar server for details.")
-      }
-    }
-  }
-    }
         }
       }
     }
