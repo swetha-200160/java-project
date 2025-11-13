@@ -1,66 +1,40 @@
 pipeline {
-  agent { label 'windows' }    // use a Windows labeled agent
+    agent any
 
-  tools {
-    maven 'maven'                 // configure this in Jenkins global tools (name = M3)
-    jdk 'AdoptOpenJDK-11'      // or your JDK tool name
-  }
-
-  environment {
-    SONARQUBE_INSTALLATION = 'MySonarQube'   // SonarQube server name from Manage Jenkins -> Configure System
-    SONAR_TOKEN_CREDENTIAL = 'sonarqube'   // Jenkins credential ID (Secret Text) that stores Sonar token
-  }
-
-  stages {
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
+    tools {
+        maven 'maven 3.9.9'    // or whatever Maven name you configured in Jenkins
+        jdk 'jdk17'            // make sure JDK 17 is configured in Jenkins
     }
 
-    stage('Clean & Build') {
-      steps {
-        // Use double quotes to expand environment variables in bat
-        bat "mvn -B -DskipTests clean package"
-      }
-    }
-
-    stage('Run Unit Tests') {
-      steps {
-        bat "mvn -B test"
-      }
-      post {
-        always {
-          junit '**\\target\\surefire-reports\\*.xml'
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'master',
+                    credentialsId: 'gitrepo',
+                    url: 'https://github.com/swetha-200160/data.git'
+            }
         }
-      }
-    }
 
-    stage('SonarQube Analysis') {
-      environment {
-        SONAR_AUTH_TOKEN = credentials(SONAR_TOKEN_CREDENTIAL)
-      }
-      steps {
-        // withSonarQubeEnv will set SONAR_HOST_URL and other env vars
-        withSonarQubeEnv(SONARQUBE_INSTALLATION) {
-          // Use mvn sonar:sonar and pass the token via -Dsonar.login
-          bat "mvn -B sonar:sonar -Dsonar.login=%SONAR_AUTH_TOKEN%"
+        stage('Build') {
+            steps {
+                bat 'mvn clean verify'
+            }
         }
-      }
-    }
 
-    stage('Quality Gate') {
-      steps {
-        // requires Sonar webhook configured to Jenkins (sonarqube-webhook) and 'Pipeline: SonarQube' plugin
-        timeout(time: 5, unit: 'MINUTES') {
-          waitForQualityGate abortPipeline: true
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    bat 'mvn sonar:sonar -Dsonar.projectKey=data-project'
+                }
+            }
         }
-      }
-    }
-  }
 
-  post {
-    success { echo "Build + SonarQube quality gate passed." }
-    failure { echo "Pipeline failed (or quality gate failed)." }
-  }
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 2, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+    }
 }
