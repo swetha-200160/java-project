@@ -2,74 +2,68 @@ pipeline {
   agent any
 
   environment {
-    SONARQUBE_SERVER  = 'SonarQube'
-    SONAR_PROJECT_KEY = 'my-java-project'
-    SONAR_TOKEN_ID    = 'sonarqube'  // change to your credential id
+    SONARQUBE_SERVER  = 'SonarQube'        // Must match the name in Manage Jenkins -> Configure System
+    SONAR_PROJECT_KEY = 'my-java-project'  // change to your Sonar project key
+    SONAR_TOKEN_ID    = 'sonarqube'        // Secret Text credential id in Jenkins
+    GIT_REPO_URL      = 'https://github.com/swetha-200160/java-project.git'
+    GIT_BRANCH        = 'master'           // change to 'main' if your repo uses main
   }
 
   stages {
     stage('Checkout') {
       steps {
-        git branch: 'master', url: 'https://github.com/swetha-200160/java-project.git'
+        // Use credentialsId if your repo is private (set credentials in Jenkins)
+        git branch: "${GIT_BRANCH}", url: "${GIT_REPO_URL}"
       }
     }
 
-    stage('Find module & Build (safe)') {
+    stage('Show environment') {
       steps {
-        bat '''
-@echo off
-rem find the first pom.xml and determine its directory
-set "FOUND_DIR="
-for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
-  set "FOUND=%%~fF"
-  rem get directory of the found pom
-  set "FOUND_DIR=%%~dpF"
-  goto :FOUND_POM
-)
-echo ERROR: pom.xml not found in workspace
-exit /b 1
+        // diagnostics to ensure agent has correct java/mvn
+        bat 'echo WORKSPACE=%WORKSPACE%'
+        bat 'java -version'
+        bat 'mvn -v'
+      }
+    }
 
-:FOUND_POM
-rem remove trailing backslash
-set "FOUND_DIR=%FOUND_DIR:~0,-1%"
-echo Found pom in "%FOUND_DIR%"
-rem validate folder exists (defensive)
-if not exist "%FOUND_DIR%" (
-  echo ERROR: found directory does not exist: "%FOUND_DIR%"
-  exit /b 1
-)
-cd /d "%FOUND_DIR%"
-echo Running mvn in %CD%
-mvn -B -DskipTests clean package
-'''
+    stage('Build') {
+      steps {
+        // run maven build (remove -DskipTests if you want tests to run)
+        bat 'mvn -B -DskipTests clean package'
       }
       post {
         always {
+          // collect test reports (will be no files if tests were skipped)
           junit '**\\target\\surefire-reports\\*.xml'
         }
       }
     }
 
-    stage('Sonar') {
+    stage('SonarQube Analysis') {
+      environment {
+        // bind secret text into SONAR_AUTH_TOKEN (literal id required)
+        SONAR_AUTH_TOKEN = credentials("${SONAR_TOKEN_ID}")
+      }
       steps {
-        withCredentials([string(credentialsId: "${SONAR_TOKEN_ID}", variable: 'SONAR_AUTH_TOKEN')]) {
-          bat '''
-@echo off
-for /f "delims=" %%F in ('dir /s /b pom.xml 2^>nul') do (
-  set "FOUND_DIR=%%~dpF"
-  goto :FOUND_POM
-)
-echo ERROR: pom.xml not found
-exit /b 1
-
-:FOUND_POM
-set "FOUND_DIR=%FOUND_DIR:~0,-1%"
-cd /d "%FOUND_DIR%"
-echo Running Sonar in %CD%
-mvn -B sonar:sonar -Dsonar.projectKey=%SONAR_PROJECT_KEY% -Dsonar.login=%SONAR_AUTH_TOKEN%
-'''
+        withSonarQubeEnv("${SONARQUBE_SERVER}") {
+          // use %SONAR_AUTH_TOKEN% inside bat so agent resolves the secret at runtime
+          bat "mvn -B sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.login=%SONAR_AUTH_TOKEN%"
         }
       }
     }
+
+    stage('Quality Gate') {
+      steps {
+        // requires Sonar webhook configured to http(s)://<jenkins-host>/sonarqube-webhook/
+        timeout(time: 5, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+  }
+
+  post {
+    success { echo '✅ Pipeline succeeded and SonarQube Quality Gate passed.' }
+    failure { echo '❌ Pipeline failed — check console output for details.' }
   }
 }
