@@ -111,9 +111,35 @@ mvn -B sonar:sonar -Dsonar.projectKey=%SONAR_PROJECT_KEY% -Dsonar.login=%SONAR_T
     }
 
     stage('Quality Gate') {
-      steps {
-        timeout(time: 5, unit: 'MINUTES') {
-          waitForQualityGate abortPipeline: true
+  steps {
+    script {
+      echo "Waiting for SonarQube Quality Gate (timeout 10m)..."
+      try {
+        timeout(time: 10, unit: 'MINUTES') {
+          // waitForQualityGate requires the 'Pipeline: SonarQube' plugin and a configured webhook
+          def qg = waitForQualityGate(abortPipeline: false) // don't auto-abort so we can log
+          if (qg == null) {
+            error("waitForQualityGate returned null — most likely Sonar webhook never reached Jenkins or analysis did not start. Check Sonar webhook & analysis status.")
+          } else {
+            echo "Quality gate status: ${qg.status}"
+            if (qg.status == 'OK') {
+              echo "Quality Gate PASSED."
+            } else {
+              // Fail or abort depending on your policy:
+              error("Quality Gate FAILED with status: ${qg.status}. Failing pipeline.")
+            }
+          }
+        }
+      } catch(exc) {
+        // provide actionable message
+        echo "ERROR while waiting for Quality Gate: ${exc}"
+        echo "Common causes: Sonar webhook not configured, Sonar analysis didn't run, Sonar token or project key mismatch, or Jenkins can't receive webhook."
+        error("Quality Gate stage failed. See console and Sonar server for details.")
+      }
+    }
+  }
+}
+
         }
       }
     }
