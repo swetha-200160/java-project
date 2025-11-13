@@ -1,9 +1,9 @@
 pipeline {
     agent any
 
-    tools {
-        maven 'maven 3.9.9'    // or whatever Maven name you configured in Jenkins
-        jdk 'jdk17'            // make sure JDK 17 is configured in Jenkins
+    environment {
+        SONARQUBE_SERVER = 'SonarQube'    // SonarQube server name from Manage Jenkins -> Configure System
+        SONAR_PROJECT_KEY = 'data-project'
     }
 
     stages {
@@ -23,8 +23,9 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('SonarQube') {
-                    bat 'mvn sonar:sonar -Dsonar.projectKey=data-project'
+                withSonarQubeEnv("${SONARQUBE_SERVER}") {
+                    // If you store a Sonar token in Jenkins as a secret text you can add -Dsonar.login=... here
+                    bat "mvn sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY}"
                 }
             }
         }
