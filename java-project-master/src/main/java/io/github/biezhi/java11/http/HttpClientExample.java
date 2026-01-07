@@ -6,11 +6,11 @@ import java.time.LocalDateTime;
 public class HttpClientExample {
 
     public static void main(String[] args) throws Exception {
-        FileWriter fw = new FileWriter("/data/app.log", true);
-        fw.write("App started at " + LocalDateTime.now() + "\n");
-        fw.close();
+        System.out.println("Java app started...");
 
-        System.out.println("Log written to /data/app.log");
-        Thread.sleep(600000); // keep container running
+        while (true) {
+            Thread.sleep(10000);
+            System.out.println("App running...");
+        }
     }
 }
