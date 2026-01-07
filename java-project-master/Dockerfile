@@ -1,4 +1,4 @@
-FROM openjdk:11-jre-slim
+FROM eclipse-temurin:11-jre-jammy
 
 WORKDIR /app
 
@@ -9,4 +9,3 @@ VOLUME /app/logs
 EXPOSE 8080
 
 CMD ["java", "-jar", "app.jar"]
-
