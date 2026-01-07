@@ -1,6 +1,12 @@
-FROM eclipse-temurin:11-jre
+FROM openjdk:11-jre-slim
+
 WORKDIR /app
-COPY target/*.jar app.jar
+
+COPY target/java11-1.0.0.jar app.jar
+
+VOLUME /app/logs
+
 EXPOSE 8080
-CMD ["java", "io.github.biezhi.java11.http.SimpleServer"]
+
+CMD ["java", "-jar", "app.jar"]
 
