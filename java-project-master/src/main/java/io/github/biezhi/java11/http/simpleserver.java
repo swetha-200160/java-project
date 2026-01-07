@@ -5,18 +5,13 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 
 public class SimpleServer {
+
     public static void main(String[] args) throws Exception {
-        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+        System.out.println("Server started");
 
-        server.createContext("/", exchange -> {
-            String response = "Hello from Docker Java Server!";
-            exchange.sendResponseHeaders(200, response.length());
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(response.getBytes());
-            }
-        });
-
-        server.start();
-        System.out.println("Server started on port 8080");
+        while (true) {
+            Thread.sleep(10000);
+            System.out.println("Still running...");
+        }
     }
 }
