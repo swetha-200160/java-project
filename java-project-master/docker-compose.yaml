@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  java-app:
+    build: .
+    container_name: java-app
+    ports:
+      - "8080:8080"
+    volumes:
+      - java-log-volume:/app/logs
+    networks:
+      - java-network
+    restart: unless-stopped
+
+volumes:
+  java-log-volume:
+
+networks:
+  java-network:

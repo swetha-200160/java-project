@@ -1,10 +1,17 @@
-FROM eclipse-temurin:11-jre-jammy
-
+# ---------- Build Stage ----------
+FROM maven:3.9.6-eclipse-temurin-17 AS build
 WORKDIR /app
 
-COPY target/java11-1.0.0.jar app.jar
+COPY pom.xml .
+COPY src ./src
 
-VOLUME /app/logs
+RUN mvn clean package -DskipTests
+
+# ---------- Run Stage ----------
+FROM eclipse-temurin:17-jre
+WORKDIR /app
+
+COPY --from=build /app/target/*.jar app.jar
 
 EXPOSE 8080
 
