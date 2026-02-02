@@ -1,34 +1,29 @@
-package com.example;
-
 import com.sun.net.httpserver.HttpServer;
-import java.io.OutputStream;
 import java.net.InetSocketAddress;
 
 public class HelloServer {
 
     public static void main(String[] args) throws Exception {
 
-        int port = 9090;
+        int tempPort = 9090;
 
-        if (System.getenv("APP_PORT") != null) {
-            port = Integer.parseInt(System.getenv("APP_PORT"));
+        String envPort = System.getenv("APP_PORT");
+        if (envPort != null) {
+            tempPort = Integer.parseInt(envPort);
         }
 
-        final int serverPort = port; // ✅ FIX
+        final int port = tempPort; // ✅ FINAL variable for lambda
 
-        HttpServer server = HttpServer.create(new InetSocketAddress(serverPort), 0);
+        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
         server.createContext("/", exchange -> {
-            String response = "✅ Server is running on port " + serverPort;
-            exchange.sendResponseHeaders(200, response.getBytes().length);
-            OutputStream os = exchange.getResponseBody();
-            os.write(response.getBytes());
-            os.close();
+            String response = "Hello! Server running on port " + port;
+            exchange.sendResponseHeaders(200, response.length());
+            exchange.getResponseBody().write(response.getBytes());
+            exchange.getResponseBody().close();
         });
 
-        server.setExecutor(null);
         server.start();
-
-        System.out.println("Server started on port " + serverPort);
+        System.out.println("Server started on port " + port);
     }
 }
