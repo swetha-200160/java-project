@@ -7,7 +7,7 @@ import java.net.InetSocketAddress;
 public class HelloServer {
 
     public static void main(String[] args) throws Exception {
-        int port = 8080;
+        int port = 9090;
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext("/", exchange -> {
