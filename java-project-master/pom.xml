@@ -1,36 +1,21 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
                              http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
-    <!-- REQUIRED -->
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.github.biezhi</groupId>
-    <artifactId>java11</artifactId>
+    <groupId>com.example</groupId>
+    <artifactId>hello-jar</artifactId>
     <version>1.0.0</version>
-    <packaging>jar</packaging>
-
-    <name>java11-demo</name>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
     <build>
         <plugins>
-
-            <!-- Compiler -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
-            </plugin>
-
-            <!-- Executable JAR -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
@@ -38,14 +23,11 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>
-                                io.github.biezhi.java11.Application
-                            </mainClass>
+                            <mainClass>com.example.HelloServer</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
             </plugin>
-
         </plugins>
     </build>
 
