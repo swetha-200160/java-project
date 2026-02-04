@@ -1,53 +1,77 @@
 pipeline {
     agent any
 
-    tools {
-        maven 'Maven3'        // Jenkins Maven tool name
-        jdk 'Java11'          // Jenkins JDK tool name
-    }
-
     environment {
-        SONAR_PROJECT_KEY = "java-hello-jar"
-        SONAR_PROJECT_NAME = "Java Hello JAR"
+        JAVA_HOME = "C:\\Program Files\\Java\\jdk-17"
+        PATH = "${JAVA_HOME}\\bin;C:\\Program Files\\apache-maven-3.9.11\\bin;${env.PATH}"
+        SERVER_PORT = "9090"
     }
 
     stages {
 
-        stage('Checkout Code from GitHub') {
+        stage('Checkout Code') {
             steps {
-                git branch: 'master',
-                    url: 'https://github.com/swetha-200160/java-project.git'
+                git url: 'https://github.com/swetha-200160/java-project.git', branch: 'master'
             }
         }
 
-        stage('SonarQube Code Analysis') {
+        stage('Check Java & Maven') {
             steps {
-                withSonarQubeEnv('SonarQubeServer') {   // Jenkins Sonar server name
-                    sh """
-                    mvn sonar:sonar \
-                    -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                    -Dsonar.projectName='${SONAR_PROJECT_NAME}'
-                    """
+                bat '''
+                echo JAVA_HOME=%JAVA_HOME%
+                java -version
+                mvn -v
+                '''
+            }
+        }
+
+        stage('Build JAR') {
+            steps {
+                dir('java-project-master') {
+                    bat 'mvn clean package'
                 }
             }
         }
 
-        stage('Build JAR Package') {
+        stage('Run JAR on Port 9090') {
             steps {
-                sh 'mvn clean package'
+                dir('java-project-master') {
+                    bat '''
+                    echo ===============================
+                    echo Starting Java server on 9090
+                    echo ===============================
+                    start "" java -jar target\\hello-jar-1.0.0.jar
+                    '''
+                }
             }
         }
 
-        stage('Run JAR on Server') {
+        stage('Verify Deployment') {
             steps {
-                sh '''
-                # Stop previous process
-                pkill -f "hello-jar-1.0.0.jar" || true
+                powershell '''
+                Write-Host "Waiting for app startup..."
+                Start-Sleep -Seconds 8
 
-                # Run new JAR in background
-                nohup java -jar target/hello-jar-1.0.0.jar > app.log 2>&1 &
+                Write-Host "Checking if port 9090 is listening..."
+                $result = netstat -ano | findstr 9090
+
+                if ($result) {
+                    Write-Host "✅ App is running on port 9090"
+                } else {
+                    Write-Error "❌ Port 9090 not listening"
+                    exit 1
+                }
                 '''
             }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ Deployment successful'
+        }
+        failure {
+            echo '❌ Deployment failed'
         }
     }
 }
