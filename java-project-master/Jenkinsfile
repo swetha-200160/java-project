@@ -4,24 +4,14 @@ pipeline {
     environment {
         JAVA_HOME = "C:\\Program Files\\Java\\jdk-17"
         PATH = "${JAVA_HOME}\\bin;C:\\Program Files\\apache-maven-3.9.11\\bin;${env.PATH}"
-        SERVER_PORT = "9090"
     }
 
     stages {
 
         stage('Checkout Code') {
             steps {
-                git url: 'https://github.com/swetha-200160/java-project.git', branch: 'master'
-            }
-        }
-
-        stage('Check Java & Maven') {
-            steps {
-                bat '''
-                echo JAVA_HOME=%JAVA_HOME%
-                java -version
-                mvn -v
-                '''
+                git branch: 'master',
+                    url: 'https://github.com/swetha-200160/java-project.git'
             }
         }
 
@@ -33,32 +23,34 @@ pipeline {
             }
         }
 
-        stage('Run JAR on Port 9090') {
+        stage('Store JAR in Folder') {
             steps {
-                dir('java-project-master') {
-                    bat '''
-                    echo ===============================
-                    echo Starting Java server on 9090
-                    echo ===============================
-                    start "" java -jar target\\hello-jar-1.0.0.jar
-                    '''
-                }
+                bat '''
+                if not exist C:\\deploy mkdir C:\\deploy
+                copy java-project-master\\target\\hello-jar-1.0.0.jar C:\\deploy\\
+                '''
             }
         }
+
+       stage('Run JAR') {
+    steps {
+        bat '''
+        echo Starting application...
+        java -jar C:\\deploy\\hello-jar-1.0.0.jar
+        '''
+    }
+}
+
 
         stage('Verify Deployment') {
             steps {
                 powershell '''
-                Write-Host "Waiting for app startup..."
                 Start-Sleep -Seconds 8
-
-                Write-Host "Checking if port 9090 is listening..."
-                $result = netstat -ano | findstr 9090
-
-                if ($result) {
+                $port = netstat -ano | findstr 9090
+                if ($port) {
                     Write-Host "✅ App is running on port 9090"
                 } else {
-                    Write-Error "❌ Port 9090 not listening"
+                    Write-Error "❌ App NOT running"
                     exit 1
                 }
                 '''
@@ -68,10 +60,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ Deployment successful'
+            echo '🎉 Pipeline SUCCESS — App Deployed'
         }
         failure {
-            echo '❌ Deployment failed'
+            echo '💥 Pipeline FAILED'
         }
     }
 }
