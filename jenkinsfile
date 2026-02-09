@@ -1,9 +1,15 @@
 pipeline {
     agent any
 
+    triggers {
+        githubPush()
+    }
+
     environment {
-        APP_NAME = "java-project"
-        DEPLOY_DIR = "/opt/java-app"
+        BRANCH = "develop"
+        REPO_URL = "git@github.com:swetha-200160/java-project.git"
+
+        DEPLOY_DIR = "C:/deploy/java-app"
         JAR_NAME = "java-project.jar"
     }
 
@@ -11,24 +17,30 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                git branch: 'develop',
-                    url: 'git@github.com:swetha-200160/java-project.git'
+                git branch: "${BRANCH}",
+                    url: "${REPO_URL}",
+                    credentialsId: "github-ssh"
             }
         }
 
-        stage('Build with Maven') {
+        stage('Build Maven Package') {
             steps {
-                sh './mvnw clean package -DskipTests'
+                bat 'mvnw.cmd clean package -DskipTests'
             }
         }
 
         stage('Deploy JAR') {
             steps {
-                sh '''
-                pkill -f ${JAR_NAME} || true
-                cp target/*.jar ${DEPLOY_DIR}/jar/${JAR_NAME}
-                nohup java -jar ${DEPLOY_DIR}/jar/${JAR_NAME} \
-                > ${DEPLOY_DIR}/logs/app.log 2>&1 &
+                bat '''
+                echo Stopping old application
+                taskkill /F /IM java.exe 2>NUL || echo No app running
+
+                echo Copying new jar
+                if not exist %DEPLOY_DIR% mkdir %DEPLOY_DIR%
+                copy /Y target\\*.jar %DEPLOY_DIR%\\%JAR_NAME%
+
+                echo Starting application
+                start /B java -jar %DEPLOY_DIR%\\%JAR_NAME%
                 '''
             }
         }
