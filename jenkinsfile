@@ -1,0 +1,36 @@
+pipeline {
+    agent any
+
+    environment {
+        APP_NAME = "java-project"
+        DEPLOY_DIR = "/opt/java-app"
+        JAR_NAME = "java-project.jar"
+    }
+
+    stages {
+
+        stage('Checkout Code') {
+            steps {
+                git branch: 'develop',
+                    url: 'git@github.com:swetha-200160/java-project.git'
+            }
+        }
+
+        stage('Build with Maven') {
+            steps {
+                sh './mvnw clean package -DskipTests'
+            }
+        }
+
+        stage('Deploy JAR') {
+            steps {
+                sh '''
+                pkill -f ${JAR_NAME} || true
+                cp target/*.jar ${DEPLOY_DIR}/jar/${JAR_NAME}
+                nohup java -jar ${DEPLOY_DIR}/jar/${JAR_NAME} \
+                > ${DEPLOY_DIR}/logs/app.log 2>&1 &
+                '''
+            }
+        }
+    }
+}
