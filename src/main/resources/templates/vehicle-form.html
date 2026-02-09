@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Motor Insurance Form</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f6f8;
+        }
+        .container {
+            width: 60%;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 20px 30px;
+            border-radius: 6px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h2 {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+        label {
+            display: block;
+            margin-top: 12px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            margin-top: 20px;
+            width: 100%;
+            padding: 10px;
+            background-color: #1976d2;
+            color: white;
+            font-size: 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .success {
+            margin-top: 20px;
+            color: green;
+            text-align: center;
+        }
+        .error {
+            margin-top: 20px;
+            color: red;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+    <h2>Motor Insurance Details</h2>
+
+    <form id="vehicleForm">
+
+        <!-- Hidden Metadata -->
+        <input type="hidden" id="formUrl" th:value="${sellerSubmitUrl}">
+        <input type="hidden" id="transactionId" th:value="${transactionId}">
+        <input type="hidden" id="messageId" th:value="${messageId}">
+
+        <!-- Seller Dynamic Fields (NO <form> tag inside this HTML) -->
+        <div th:utext="${formHtml}"></div>
+
+        <button type="submit">Submit</button>
+    </form>
+
+    <div id="responseMessage"></div>
+</div>
+
+<script>
+    document.getElementById("vehicleForm").addEventListener("submit", function (e) {
+        e.preventDefault();
+
+        const formData = {};
+
+        document
+            .querySelectorAll("#vehicleForm input, #vehicleForm select, #vehicleForm textarea")
+            .forEach(el => {
+                if (el.name && el.type !== "hidden") {
+                    formData[el.name] = el.value;
+                }
+            });
+
+        const formUrl = document.getElementById("formUrl").value;
+        const transactionId = document.getElementById("transactionId").value;
+        const messageId = document.getElementById("messageId").value;
+
+        fetch(
+            `/vehicle-form?formUrl=${encodeURIComponent(formUrl)}&transactionId=${transactionId}&messageId=${messageId}`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(formData)
+            }
+        )
+        .then(res => {
+            if (!res.ok) throw new Error("Submit failed");
+            return res.json();
+        })
+        .then(res => {
+            document.getElementById("responseMessage").innerHTML =
+                `<div class="success">Submission ID: ${res.submissionId}</div>`;
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById("responseMessage").innerHTML =
+                `<div class="error">Submission failed</div>`;
+        });
+    });
+</script>
+
+</body>
+</html>
