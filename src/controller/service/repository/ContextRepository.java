@@ -1,5 +1,10 @@
+package com.can.buyerApp.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
 @Repository
-@Profile("!local")
-public interface ContextRepository
+public interface ContextRepository 
         extends JpaRepository<ContextEntity, Long> {
 }
+
