@@ -1,12 +1,12 @@
 package com.can.buyerApp;
 
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootApplication
-public class BuyerAppApplication {
+@SpringBootTest
+class BuyerAppApplicationTests {
 
-    public static void main(String[] args) {
-        SpringApplication.run(BuyerAppApplication.class, args);
+    @Test
+    void contextLoads() {
     }
 }
