@@ -6,7 +6,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.web.client.RestTemplate;
 
 @SpringBootApplication
-public class BuyerAppApplication {
+public class BuyerAppApplicationTests {
+}
+ {
 
 	public static void main(String[] args) {
 		SpringApplication.run(BuyerAppApplication.class, args);
