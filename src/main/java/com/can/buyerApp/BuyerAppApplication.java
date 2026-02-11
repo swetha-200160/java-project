@@ -1,21 +1,13 @@
 package com.can.buyerApp;
 
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
-import org.springframework.web.client.RestTemplate;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootApplication
-public class BuyerAppApplicationTests {
+@SpringBootTest
+class BuyerAppApplicationTests {
+
+    @Test
+    void contextLoads() {
+    }
 }
- {
 
-	public static void main(String[] args) {
-		SpringApplication.run(BuyerAppApplication.class, args);
-	}
-
-	@Bean
-	public RestTemplate restTemplate() {
-		return new RestTemplate();
-	}
-}
