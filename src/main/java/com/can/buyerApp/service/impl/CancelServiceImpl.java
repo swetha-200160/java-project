@@ -1,25 +1,20 @@
-@Service
-public class CancelServiceImpl implements CancelService {
+package com.can.buyerApp.service.impl;
 
-    @Override
-    public ResponseEntity<?> sendCancelRequest(
-            String domain,
-            String type,
-            String transactionId,
-            Long cancellationReasonId,
-            String orderId,
-            String description
-    ) {
-        try {
-            CancelRequest cancelRequest =
-                    createCancelRequest(domain, transactionId, cancellationReasonId, orderId, description);
+import com.can.buyerApp.service.CancelService;
+import com.can.buyerApp.repository.ContextRepository;
+import com.can.buyerApp.repository.CancelReasonRepo;
+import com.can.buyerApp.webclient.OndcWebClient;
+import com.can.buyerApp.request.CancelRequest;
+import com.can.buyerApp.masterentity.CancelReason;
+import com.can.buyerApp.entity.ContextEntity;
+import com.can.buyerApp.utils.DateTimeUtils;
 
-            ResponseEntity<?> response = ondcWebClient.sendCancel(cancelRequest);
-            return ResponseEntity.ok(response.getBody());
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
 
-        } catch (Exception e) {
-            log.error("Error in processing Cancel request", e);
-            throw new RuntimeException("Error in processing Cancel request", e);
-        }
-    }
-}
+import lombok.extern.slf4j.Slf4j;
+
+import java.util.UUID;
+
+import static com.can.buyerApp.constants.PreConstants.CANCEL;
+import static com.can.buyerApp.constants.PreConstants.CITY_CODE;
