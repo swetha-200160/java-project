@@ -12,8 +12,9 @@ public class AppConfig {
 private String collectedBy;
 
 
-    @Value("${payment.default.status}")
-    private String paymentStatus;
+   @Value("${payment.default.status:PAID}")
+private String paymentStatus;
+
 
     @Value("${payment.default.type}")
     private String paymentType;
