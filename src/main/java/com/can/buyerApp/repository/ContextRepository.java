@@ -11,7 +11,9 @@ import java.util.List;
 
 
 @Repository
-public interface ContextRepository extends JpaRepository<ContextEntity, Long> {
+public interface ContextRepository extends JpaRepository<Context, Long> {
+}
+
 
 
     @Query(value = "SELECT * FROM context_details WHERE transaction_id = :transactionId" +
