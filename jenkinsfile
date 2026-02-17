@@ -43,7 +43,8 @@ pipeline {
 
         echo Starting application on port 9090
         cd /d "%DEPLOY_DIR%"
-        start java -jar "%JAR_NAME%" --server.port=9090 > app.log 2>&1
+      java -jar "java-project.jar" --server.port=9090 > app.log 2>&1
+
         '''
     }
 }
