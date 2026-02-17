@@ -8,9 +8,9 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class AppConfig {
 
+@Value("${payment.default.collected_by:BAP}")
+private String collectedBy;
 
-    @Value("${payment.default.collected_by}")
-    private String collectedBy;
 
     @Value("${payment.default.status}")
     private String paymentStatus;
