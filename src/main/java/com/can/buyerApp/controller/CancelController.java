@@ -19,14 +19,15 @@ import java.util.Objects;
 @ConditionalOnProperty(
         name = "feature.cancel.enabled",
         havingValue = "true",
-        matchIfMissing = true
+        matchIfMissing = false
 )
 public class CancelController {
 
     private final CancelService cancelService;
     private final OnCancelService onCancelService;
 
-    public CancelController(CancelService cancelService, OnCancelService onCancelService) {
+    public CancelController(CancelService cancelService,
+                            OnCancelService onCancelService) {
         this.cancelService = cancelService;
         this.onCancelService = onCancelService;
     }
@@ -47,16 +48,14 @@ public class CancelController {
                     && PreConstants.VALID_TYPES.contains(type)
                     && Objects.nonNull(transactionId)) {
 
-                log.info("Valid domain and type. Proceeding to send cancel request");
                 return cancelService.sendCancelRequest(
                         domain, type, transactionId,
                         cancellationReasonId, orderId, description
                 );
-            } else {
-                log.warn("Invalid domain or type provided. Domain: {}, Type: {}", domain, type);
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("Invalid domain or type provided.");
             }
+
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Invalid domain or type provided.");
 
         } catch (Exception e) {
             log.error("Error occurred while processing the cancel request", e);
@@ -66,16 +65,18 @@ public class CancelController {
     }
 
     @PostMapping("/on_cancel")
-    public ResponseEntity<?> onCancelRequest(@RequestBody OnCancelRequest onCancelRequest) {
+    public ResponseEntity<?> onCancelRequest(
+            @RequestBody OnCancelRequest onCancelRequest) {
 
         if (Objects.isNull(onCancelRequest)) {
-            log.warn("Received invalid OnCancelRequest");
-            return ResponseEntity.badRequest().body("Invalid onCancelRequest.");
+            return ResponseEntity.badRequest()
+                    .body("Invalid onCancelRequest.");
         }
 
         try {
-            log.info("Proceeding to save on cancel request");
-            return ResponseEntity.ok(onCancelService.saveOnCancelRequest(onCancelRequest));
+            return ResponseEntity.ok(
+                    onCancelService.saveOnCancelRequest(onCancelRequest)
+            );
         } catch (Exception e) {
             log.error("Error processing onCancelRequest", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -88,4 +89,3 @@ public class CancelController {
         return onCancelService.getCancelReason();
     }
 }
-
