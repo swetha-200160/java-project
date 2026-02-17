@@ -1,10 +1,7 @@
-@Service
-@ConditionalOnProperty(
-    name = "feature.cancel.enabled",
-    havingValue = "true",
-    matchIfMissing = false
-)
-public class CancelServiceImpl implements CancelService {
-    ...
-}
+package com.can.buyerApp.service;
 
+public interface CancelService {
+
+    void cancelTransaction(String transactionId);
+
+}
