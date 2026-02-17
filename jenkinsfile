@@ -30,19 +30,23 @@ pipeline {
         }
 
         stage('Deploy JAR') {
-            steps {
-                bat '''
-                echo Stopping old application
-                taskkill /F /IM java.exe 2>NUL || echo No app running
+    steps {
+        bat '''
+        echo Stopping application running on port 9090
+        for /f "tokens=5" %%a in ('netstat -ano ^| findstr :9090') do taskkill /PID %%a /F
 
-                echo Copying new jar
-                if not exist %DEPLOY_DIR% mkdir %DEPLOY_DIR%
-                copy /Y target\\*.jar %DEPLOY_DIR%\\%JAR_NAME%
+        echo Preparing deploy directory
+        if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
 
-                echo Starting application
-                start /B java -jar %DEPLOY_DIR%\\%JAR_NAME%
-                '''
-            }
-        }
+        echo Copying new JAR
+        copy /Y target\\*.jar "%DEPLOY_DIR%\\%JAR_NAME%"
+
+        echo Starting application on port 9090
+        cd /d "%DEPLOY_DIR%"
+        start java -jar "%JAR_NAME%" --server.port=9090 > app.log 2>&1
+        '''
+    }
+}
+
     }
 }
