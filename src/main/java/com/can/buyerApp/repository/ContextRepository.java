@@ -1,7 +1,6 @@
 package com.can.buyerApp.repository;
 
 import com.can.buyerApp.entity.ContextEntity;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -10,12 +9,11 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-@ConditionalOnProperty(
-        name = "feature.cancel.enabled",
-        havingValue = "true",
-        matchIfMissing = true
-)
 public interface ContextRepository extends JpaRepository<ContextEntity, Long> {
+
+    // your queries stay exactly the same
+}
+
 
     @Query(value = "SELECT * FROM context_details WHERE transaction_id = :transactionId " +
             "AND provider_id = :providerId " +
