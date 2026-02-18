@@ -11,10 +11,6 @@ import java.util.List;
 @Repository
 public interface ContextRepository extends JpaRepository<ContextEntity, Long> {
 
-    // your queries stay exactly the same
-}
-
-
     @Query(value = "SELECT * FROM context_details WHERE transaction_id = :transactionId " +
             "AND provider_id = :providerId " +
             "AND message_id = :messageId",
@@ -25,7 +21,6 @@ public interface ContextRepository extends JpaRepository<ContextEntity, Long> {
             @Param("messageId") String messageId
     );
 
-    // newly added for form url fetching purpose
     @Query(value = "SELECT * FROM context_details WHERE transaction_id = :transactionId " +
             "AND provider_id = :providerId",
             nativeQuery = true)
