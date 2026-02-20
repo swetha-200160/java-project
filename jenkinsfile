@@ -2,36 +2,15 @@ pipeline {
     agent any
 
     stages {
-
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
                 checkout scm
             }
         }
 
-        stage('Build Maven Package') {
+        stage('Build') {
             steps {
                 bat 'mvnw.cmd clean package -DskipTests'
-            }
-        }
-
-        stage('Deploy JAR') {
-            steps {
-                bat '''
-                echo Stopping application running on port 9090
-                for /f "tokens=5" %%a in ('netstat -ano ^| findstr :9090') do taskkill /PID %%a /F
-
-                echo Preparing deploy directory
-                if not exist "C:\\deploy\\java-app" mkdir "C:\\deploy\\java-app"
-
-                echo Copying new JAR
-                copy /Y target\\*.jar "C:\\deploy\\java-app\\java-project.jar"
-
-                echo Starting application on port 9090
-                cd /d "C:\\deploy\\java-app"
-
-                start "" cmd /c "\"C:\\Program Files\\Java\\jdk-17\\bin\\java.exe\" -jar java-project.jar --server.port=9090 > app.log 2>&1"
-                '''
             }
         }
     }
