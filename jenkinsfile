@@ -1,16 +1,52 @@
-pipeline {
+ipeline {
     agent any
-
+ 
+    triggers {
+        githubPush()
+    }
+ 
+    environment {
+        BRANCH = "develop"
+        REPO_URL = "https://github.com/swetha-200160/java-project.git"
+ 
+        DEPLOY_DIR = "C:/deploy/java-app"
+        JAR_NAME  = "java-project.jar"
+        JAVA_HOME = "C:/Program Files/Java/jdk-17"
+    }
+ 
     stages {
-        stage('Checkout') {
+ 
+        stage('Checkout Code') {
             steps {
-                checkout scm
+                git branch: "${BRANCH}",
+                    url: "${REPO_URL}",
+                    credentialsId: "github-ssh"
             }
         }
-
-        stage('Build') {
+ 
+        stage('Build Maven Package') {
             steps {
                 bat 'mvnw.cmd clean package -DskipTests'
+            }
+        }
+ 
+        stage('Deploy JAR') {
+            steps {
+                bat """
+                echo Stopping application running on port 9090
+                for /f "tokens=5" %%a in ('netstat -ano ^| findstr :9090') do taskkill /PID %%a /F
+ 
+                echo Preparing deploy directory
+                if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
+ 
+                echo Copying new JAR
+                copy /Y target\\*.jar "%DEPLOY_DIR%\\%JAR_NAME%"
+ 
+                echo Starting application on port 9090
+                cd /d "%DEPLOY_DIR%"
+ 
+                start "" cmd /c "\"%JAVA_HOME%/bin/java.exe\" -jar \"%DEPLOY_DIR%/%JAR_NAME%\" --server.port=9090 > app.log 2>&1"
+                """
             }
         }
     }
