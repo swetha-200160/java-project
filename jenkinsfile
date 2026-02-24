@@ -31,12 +31,13 @@ pipeline {
         }
 
         stage('SonarQube Analysis') {
-    steps {
-        withSonarQubeEnv('SonarQube') {
-            bat 'mvnw.cmd sonar:sonar'
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    bat 'mvnw.cmd sonar:sonar'
+                }
+            }
         }
-    }
-}
+
         stage('Deploy JAR') {
             steps {
                 bat """
@@ -62,11 +63,9 @@ pipeline {
         success {
             echo "✅ PIPELINE SUCCESS: Build, SonarQube analysis, and deployment completed successfully."
         }
-
         failure {
             echo "❌ PIPELINE FAILED: Check logs for build, SonarQube, or deployment errors."
         }
-
         always {
             echo "ℹ️ Pipeline execution finished."
         }
