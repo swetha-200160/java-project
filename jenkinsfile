@@ -31,13 +31,12 @@ pipeline {
         }
 
         stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('SonarQubeServer') {
-                    bat 'mvnw.cmd sonar:sonar'
-                }
-            }
+    steps {
+        withSonarQubeEnv('SonarQube') {
+            bat 'mvnw.cmd sonar:sonar'
         }
-
+    }
+}
         stage('Deploy JAR') {
             steps {
                 bat """
