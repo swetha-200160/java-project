@@ -1,66 +1,47 @@
 pipeline {
     agent any
 
-    triggers {
-        githubPush()
-    }
-
     environment {
         BRANCH = "develop"
         REPO_URL = "git@github.com:swetha-200160/java-project.git"
-
-        // LOCAL (Jenkins)
-        LOCAL_JAR = "target\\*.jar"
-
-        // REMOTE SERVER DETAILS
-        REMOTE_USER = "administrator"        // change if needed
-        REMOTE_HOST = "192.168.0.60"
-        REMOTE_DIR  = "F:/Deployments/ONDC"
-
-        JAR_NAME  = "ONDC"
-        JAVA_CMD  = "C:/Program Files/Java/jdk-17/bin/java"
+        JAR_NAME = "java-project.jar"
     }
 
     stages {
 
-        stage('Checkout Code') {
+        stage('Checkout & Build (LOCAL JENKINS)') {
             steps {
                 git branch: "${BRANCH}",
                     url: "${REPO_URL}",
                     credentialsId: "github-ssh"
-            }
-        }
 
-        stage('Build Maven Package') {
-            steps {
                 bat 'mvnw.cmd clean package -DskipTests'
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('SonarQube') {
-                    bat 'mvnw.cmd sonar:sonar'
-                }
+        stage('Deploy & Run JAR (SERVER 192.168.0.60)') {
+            agent { label 'ondc-server' }   // 🚀 RUNS ON SERVER
+            environment {
+                DEPLOY_DIR  = "F:/Deployments/ONDC"
+                JAVA_HOME  = "C:/Program Files/Java/jdk-17"
+                SERVER_PORT = "9090"
             }
-        }
-
-        stage('Copy JAR to Remote Server') {
             steps {
                 bat """
-                echo Copying JAR to remote server...
-                scp ${LOCAL_JAR} ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/${JAR_NAME}
-                """
-            }
-        }
+                echo ===== Running JAR on SERVER =====
 
-        stage('Run JAR on Remote Server') {
-            steps {
-                bat """
-                ssh ${REMOTE_USER}@${REMOTE_HOST} ^
-                "taskkill /F /IM java.exe 2>nul ^& ^
-                 cd ${REMOTE_DIR} ^& ^
-                 start cmd /c \\"${JAVA_CMD} -jar ${JAR_NAME} --server.port=9090 > app.log 2>&1\\""
+                if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
+
+                echo Copying JAR to server folder
+                copy /Y "%WORKSPACE%\\target\\*.jar" "%DEPLOY_DIR%\\%JAR_NAME%"
+
+                echo Stopping old process (if any)
+                for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%SERVER_PORT%') do taskkill /PID %%a /F
+
+                echo Starting application from F:\\Deployments\\ONDC
+                cd /d "%DEPLOY_DIR%"
+
+                start "" cmd /c "\"%JAVA_HOME%\\bin\\java.exe\" -jar \"%DEPLOY_DIR%\\%JAR_NAME%\" --server.port=%SERVER_PORT% > app.log 2>&1"
                 """
             }
         }
@@ -68,10 +49,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ SUCCESS: JAR deployed & running on remote server (192.168.0.60)"
+            echo "✅ JAR is running from F:/Deployments/ONDC on server 192.168.0.60"
         }
         failure {
-            echo "❌ FAILED: Check Jenkins & server logs"
+            echo "❌ Deployment failed – check console output"
         }
     }
 }
