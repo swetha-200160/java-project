@@ -1,15 +1,15 @@
 pipeline {
-    agent any
+    agent any   // ✅ local Jenkins machine
 
     environment {
-        BRANCH = "develop"
+        BRANCH   = "develop"
         REPO_URL = "git@github.com:swetha-200160/java-project.git"
         JAR_NAME = "java-project.jar"
     }
 
     stages {
 
-        stage('Checkout & Build (LOCAL JENKINS)') {
+        stage('Checkout & Build (LOCAL)') {
             steps {
                 git branch: "${BRANCH}",
                     url: "${REPO_URL}",
@@ -19,26 +19,27 @@ pipeline {
             }
         }
 
-        stage('Deploy & Run JAR (SERVER 192.168.0.60)') {
-            agent { label 'ondc-server' }   // 🚀 RUNS ON SERVER
+        stage('Deploy & Run JAR (SERVER)') {
+            agent { label 'ondc-server' }   // 🚀 SERVER EXECUTION
             environment {
                 DEPLOY_DIR  = "F:/Deployments/ONDC"
-                JAVA_HOME  = "C:/Program Files/Java/jdk-17"
+                JAVA_HOME   = "C:/Program Files/Java/jdk-17"
                 SERVER_PORT = "9090"
             }
             steps {
                 bat """
-                echo ===== Running JAR on SERVER =====
+                echo ===== Deploying to SERVER 192.168.0.60 =====
 
+                echo Creating destination path if missing
                 if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
 
-                echo Copying JAR to server folder
+                echo Copy JAR from Jenkins workspace to SERVER folder
                 copy /Y "%WORKSPACE%\\target\\*.jar" "%DEPLOY_DIR%\\%JAR_NAME%"
 
-                echo Stopping old process (if any)
+                echo Stop old app if running
                 for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%SERVER_PORT%') do taskkill /PID %%a /F
 
-                echo Starting application from F:\\Deployments\\ONDC
+                echo Run JAR from destination path
                 cd /d "%DEPLOY_DIR%"
 
                 start "" cmd /c "\"%JAVA_HOME%\\bin\\java.exe\" -jar \"%DEPLOY_DIR%\\%JAR_NAME%\" --server.port=%SERVER_PORT% > app.log 2>&1"
@@ -49,10 +50,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ JAR is running from F:/Deployments/ONDC on server 192.168.0.60"
+            echo "✅ JAR is running from F:/Deployments/ONDC on SERVER"
         }
         failure {
-            echo "❌ Deployment failed – check console output"
+            echo "❌ Deployment failed – check logs"
         }
     }
 }
