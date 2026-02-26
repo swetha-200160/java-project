@@ -41,34 +41,33 @@ pipeline {
             }
         }
 
-        stage('Deploy JAR') {
-            steps {
-                bat """
-                echo =====================================
-                echo Deploying to Server: %SERVER_NAME%
-                echo Primary Deploy Path: %DEPLOY_DIR%
-                echo Extra Deploy Path: %EXTRA_DEPLOY_PATH%
-                echo =====================================
+       stage('Deploy JAR') {
+    steps {
+        bat """
+        echo =====================================
+        echo Deploying to Server: %SERVER_NAME%
+        echo Primary Deploy Path: %DEPLOY_DIR%
+        echo Extra Deploy Path: %EXTRA_DEPLOY_PATH%
+        echo =====================================
 
-                echo Stopping application running on port 9090
-                for /f "tokens=5" %%a in ('netstat -ano ^| findstr :9090') do taskkill /PID %%a /F
+        echo Stopping application running on port 9090
+        for /f "tokens=5" %%a in ('netstat -ano ^| findstr :9090') do taskkill /PID %%a /F
 
-                echo Preparing deploy directory
-                if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
-                if not exist "%EXTRA_DEPLOY_PATH%" mkdir "%EXTRA_DEPLOY_PATH%"
+        echo Preparing deploy directory
+        if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
+        if not exist "%EXTRA_DEPLOY_PATH%" mkdir "%EXTRA_DEPLOY_PATH%"
 
-                echo Copying new JAR
-                copy /Y target\\*.jar "%DEPLOY_DIR%\\%JAR_NAME%"
-                copy /Y target\\*.jar "%EXTRA_DEPLOY_PATH%\\%JAR_NAME%"
+        echo Copying new JAR
+        copy /Y "target\\%JAR_NAME%" "%DEPLOY_DIR%\\%JAR_NAME%"
+        copy /Y "target\\%JAR_NAME%" "%EXTRA_DEPLOY_PATH%\\%JAR_NAME%"
 
-                echo Starting application on port 9090
-                cd /d "%DEPLOY_DIR%"
+        echo Starting application on port 9090
+        cd /d "%DEPLOY_DIR%"
 
-                start "" cmd /c "\"%JAVA_HOME%/bin/java.exe\" -jar \"%DEPLOY_DIR%/%JAR_NAME%\" --server.port=9090 > app.log 2>&1"
-                """
-            }
-        }
+        start "" cmd /c "\"%JAVA_HOME%/bin/java.exe\" -jar \"%DEPLOY_DIR%/%JAR_NAME%\" --server.port=9090 > app.log 2>&1"
+        """
     }
+}
 
     post {
         success {
