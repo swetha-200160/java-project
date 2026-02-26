@@ -2,10 +2,12 @@ pipeline {
     agent any   // local Jenkins
 
     environment {
-        BRANCH   = "develop"
-        REPO_URL = "git@github.com:swetha-200160/java-project.git"
-        JAR_NAME = "BuyerApp.jar"
-    }
+    BRANCH = "develop"
+    REPO_URL = "git@github.com:swetha-200160/java-project.git"
+
+    JAR_NAME = "BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
+    DEPLOY_DIR_SERVER_B = "F:/Deployments/ONDC"
+}
 
     stages {
 
