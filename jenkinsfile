@@ -21,26 +21,21 @@ pipeline {
             }
         }
 
-        stage('Run JAR on SERVER (192.168.0.60)') {
-            agent { label 'ondc-server' }   // 🔥 SERVER
-            environment {
-                DEPLOY_DIR  = "F:/Deployments/ONDC"
-                JAVA_HOME   = "C:/Program Files/Java/jdk-17"
-                SERVER_PORT = "9090"
-            }
-            steps {
-                bat """
-                if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
+        stage('Deploy to Server B') {
+    steps {
+        sshagent(credentials: ['serverB-ssh']) {
+            bat """
+            echo Copying JAR to Server B
+            scp target\\${JAR_NAME} deployuser@192.168.0.60:F:\\Deployments\\ONDC\\${JAR_NAME}
 
-                copy /Y "%WORKSPACE%\\target\\*.jar" "%DEPLOY_DIR%\\%JAR_NAME%"
+            echo Stopping application on Server B (port 9090)
+            ssh deployuser@192.168.0.60 ^
+            "for /f \\"tokens=5\\" %%a in ('netstat -ano ^| findstr :9090') do taskkill /PID %%a /F"
 
-                for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%SERVER_PORT%') do taskkill /PID %%a /F
-
-                cd /d "%DEPLOY_DIR%"
-
-                start "" cmd /c "\"%JAVA_HOME%\\bin\\java.exe\" -jar %JAR_NAME% --server.port=%SERVER_PORT% > app.log 2>&1"
-                """
-            }
+            echo Starting application on Server B
+            ssh deployuser@192.168.0.60 ^
+            "cd /d F:\\Deployments\\ONDC && start java -jar ${JAR_NAME} --server.port=9090 > app.log 2>&1"
+            """
         }
     }
 }
