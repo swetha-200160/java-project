@@ -1,41 +1,84 @@
 pipeline {
-    agent any   // local Jenkins
+    agent any
+
+    triggers {
+        githubPush()
+    }
 
     environment {
-    BRANCH = "develop"
-    REPO_URL = "git@github.com:swetha-200160/java-project.git"
+        BRANCH = "develop"
+        REPO_URL = "git@github.com:swetha-200160/java-project.git"
 
-    JAR_NAME = "BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
-    DEPLOY_DIR_SERVER_B = "F:/Deployments/ONDC"
-}
+        DEPLOY_DIR = "C:/deploy/java-app"
+        JAR_NAME  = "java-project.jar"
+        JAVA_HOME = "C:/Program Files/Java/jdk-17"
+
+        EXTRA_DEPLOY_PATH = "F:/Deployments/ONDC"
+        SERVER_NAME = "192.168.0.60"
+    }
 
     stages {
 
-        stage('Build JAR (LOCAL)') {
+        stage('Checkout Code') {
             steps {
-                git branch: BRANCH,
-                    url: REPO_URL,
-                    credentialsId: 'github-ssh'
+                git branch: "${BRANCH}",
+                    url: "${REPO_URL}",
+                    credentialsId: "github-ssh"
+            }
+        }
 
+        stage('Build Maven Package') {
+            steps {
                 bat 'mvnw.cmd clean package -DskipTests'
             }
         }
 
-        stage('Deploy to Server B') {
-    steps {
-        sshagent(credentials: ['serverB-ssh']) {
-            bat """
-            echo Copying JAR to Server B
-            scp target\\${JAR_NAME} deployuser@192.168.0.60:F:\\Deployments\\ONDC\\${JAR_NAME}
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    bat 'mvnw.cmd sonar:sonar'
+                }
+            }
+        }
 
-            echo Stopping application on Server B (port 9090)
-            ssh deployuser@192.168.0.60 ^
-            "for /f \\"tokens=5\\" %%a in ('netstat -ano ^| findstr :9090') do taskkill /PID %%a /F"
+        stage('Deploy JAR') {
+            steps {
+                bat """
+                echo =====================================
+                echo Deploying to Server: %SERVER_NAME%
+                echo Primary Deploy Path: %DEPLOY_DIR%
+                echo Extra Deploy Path: %EXTRA_DEPLOY_PATH%
+                echo =====================================
 
-            echo Starting application on Server B
-            ssh deployuser@192.168.0.60 ^
-            "cd /d F:\\Deployments\\ONDC && start java -jar ${JAR_NAME} --server.port=9090 > app.log 2>&1"
-            """
+                echo Stopping application running on port 9090
+                for /f "tokens=5" %%a in ('netstat -ano ^| findstr :9090') do taskkill /PID %%a /F
+
+                echo Preparing deploy directory
+                if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
+                if not exist "%EXTRA_DEPLOY_PATH%" mkdir "%EXTRA_DEPLOY_PATH%"
+
+                echo Copying new JAR
+                copy /Y target\\*.jar "%DEPLOY_DIR%\\%JAR_NAME%"
+                copy /Y target\\*.jar "%EXTRA_DEPLOY_PATH%\\%JAR_NAME%"
+
+                echo Starting application on port 9090
+                cd /d "%DEPLOY_DIR%"
+
+                start "" cmd /c "\"%JAVA_HOME%/bin/java.exe\" -jar \"%DEPLOY_DIR%/%JAR_NAME%\" --server.port=9090 > app.log 2>&1"
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ PIPELINE SUCCESS: Build, SonarQube analysis, and deployment completed successfully on server ${SERVER_NAME}."
+        }
+        failure {
+            echo "❌ PIPELINE FAILED: Check logs for build, SonarQube, or deployment errors."
+        }
+        always {
+            echo "ℹ️ Pipeline execution finished."
         }
     }
 }
