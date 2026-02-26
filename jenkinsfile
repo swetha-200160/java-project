@@ -12,17 +12,21 @@ pipeline {
         DEPLOY_DIR = "C:/deploy/java-app"
         JAR_NAME  = "java-project.jar"
         JAVA_HOME = "C:/Program Files/Java/jdk-17"
+ 
+        EXTRA_DEPLOY_PATH = "F:/Deployments/ONDC"
+        SERVER_NAME = "192.168.0.60"
     }
  
     stages {
  
-         stage('Checkout Code') {
+        stage('Checkout Code') {
             steps {
                 git branch: "${BRANCH}",
                     url: "${REPO_URL}",
                     credentialsId: "github-ssh"
             }
         }
+ 
         stage('Build Maven Package') {
             steps {
                 bat 'mvnw.cmd clean package -DskipTests'
@@ -37,30 +41,37 @@ pipeline {
             }
         }
  
-        stage('Deploy JAR') {
-            steps {
-                bat """
-                echo Stopping application running on port 9090
-                for /f "tokens=5" %%a in ('netstat -ano ^| findstr :9090') do taskkill /PID %%a /F
+       stage('Deploy JAR') {
+    steps {
+        bat """
+        echo =====================================
+        echo Deploying to Server: %SERVER_NAME%
+        echo Primary Deploy Path: %DEPLOY_DIR%
+        echo Extra Deploy Path: %EXTRA_DEPLOY_PATH%
+        echo =====================================
  
-                echo Preparing deploy directory
-                if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
+        echo Stopping application running on port 9090
+        for /f "tokens=5" %%a in ('netstat -ano ^| findstr :9090') do taskkill /PID %%a /F
  
-                echo Copying new JAR
-                copy /Y target\\*.jar "%DEPLOY_DIR%\\%JAR_NAME%"
+        echo Preparing deploy directory
+        if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
+        if not exist "%EXTRA_DEPLOY_PATH%" mkdir "%EXTRA_DEPLOY_PATH%"
  
-                echo Starting application on port 9090
-                cd /d "%DEPLOY_DIR%"
+        echo Copying new JAR
+        copy /Y "target\\%JAR_NAME%" "%DEPLOY_DIR%\\%JAR_NAME%"
+        copy /Y "target\\%JAR_NAME%" "%EXTRA_DEPLOY_PATH%\\%JAR_NAME%"
  
-                start "" cmd /c "\"%JAVA_HOME%/bin/java.exe\" -jar \"%DEPLOY_DIR%/%JAR_NAME%\" --server.port=9090 > app.log 2>&1"
-                """
-            }
-        }
+        echo Starting application on port 9090
+        cd /d "%DEPLOY_DIR%"
+ 
+        start "" cmd /c "\"%JAVA_HOME%/bin/java.exe\" -jar \"%DEPLOY_DIR%/%JAR_NAME%\" --server.port=9090 > app.log 2>&1"
+        """
     }
+}
  
     post {
         success {
-            echo "✅ PIPELINE SUCCESS: Build, SonarQube analysis, and deployment completed successfully."
+            echo "✅ PIPELINE SUCCESS: Build, SonarQube analysis, and deployment completed successfully on server ${SERVER_NAME}."
         }
         failure {
             echo "❌ PIPELINE FAILED: Check logs for build, SonarQube, or deployment errors."
@@ -69,4 +80,4 @@ pipeline {
             echo "ℹ️ Pipeline execution finished."
         }
     }
-}
+}  
