@@ -1,74 +1,51 @@
 pipeline {
     agent any
- 
-    triggers {
-        githubPush()
-    }
- 
+
     environment {
-        BRANCH = "develop"
-        REPO_URL = "git@github.com:swetha-200160/java-project.git"
- 
-        DEPLOY_DIR = "C:/deploy/java-app"
-        JAR_NAME  = "java-project.jar"
-        JAVA_HOME = "C:/Program Files/Java/jdk-17"
- 
-        EXTRA_DEPLOY_PATH = "F:/Deployments/ONDC"
-        SERVER_NAME = "192.168.0.60"
+        SERVER_IP = "192.168.0.60"
+        DEPLOY_PATH = "F:\Deployments\ONDC"
     }
- 
+
     stages {
- 
+
         stage('Checkout Code') {
             steps {
-                git branch: "${BRANCH}",
-                    url: "${REPO_URL}",
-                    credentialsId: "github-ssh"
+                git branch: 'develop', url: 'https://github.com/swetha-200160/java-project.git'
             }
         }
- 
-        stage('Build Maven Package') {
+
+        stage('Build JAR') {
             steps {
-                bat 'mvnw.cmd clean package -DskipTests'
+                bat 'mvn clean package'
             }
         }
- 
-        stage('SonarQube Analysis') {
+
+        stage('Deploy JAR to Windows Server') {
             steps {
-                withSonarQubeEnv('SonarQube') {
-                    bat 'mvnw.cmd sonar:sonar'
+                withCredentials([usernamePassword(
+                    credentialsId: 'winrm-creds',
+                    usernameVariable: 'WIN_USER',
+                    passwordVariable: 'WIN_PASS'
+                )]) {
+
+                    powershell '''
+                    $secpass = ConvertTo-SecureString "$env:WIN_PASS" -AsPlainText -Force
+                    $cred = New-Object System.Management.Automation.PSCredential("$env:WIN_USER", $secpass)
+
+                    Invoke-Command -ComputerName $env:SERVER_IP `
+                        -Credential $cred `
+                        -ScriptBlock {
+                            if (!(Test-Path "F:\Deployments\ONDC)) {
+                                New-Item -ItemType Directory -Path "F:\Deployments\ONDC"
+                            }
+                        }
+
+                    Copy-Item "target\\*.jar" `
+                        -Destination "\\\\192.168.0.60\\F:\\Deployments\\ONDC" `
+                        -Force
+                    '''
                 }
             }
         }
- stage('Deploy JAR') {
-    steps {
-        sshagent(credentials: ['windows-ssh']) {
-            bat """
-            echo Deploying to %SERVER_NAME%
-
-            ssh -o StrictHostKeyChecking=no %SERVER_NAME% ^
-            "for /f \\\"tokens=5\\\" %%%%a in ('netstat -ano ^| findstr :9090') do taskkill /PID %%%%a /F"
-
-            scp -o StrictHostKeyChecking=no target\\%JAR_NAME% %SERVER_NAME%:%DEPLOY_DIR%\\%JAR_NAME%
-            scp -o StrictHostKeyChecking=no target\\%JAR_NAME% %SERVER_NAME%:%EXTRA_DEPLOY_PATH%\\%JAR_NAME%
-
-            ssh -o StrictHostKeyChecking=no %SERVER_NAME% ^
-            "cd /d %DEPLOY_DIR% && ^
-             start cmd /c \\\"%JAVA_HOME%\\\\bin\\\\java.exe -jar %DEPLOY_DIR%\\\\%JAR_NAME% --server.port=9090 > app.log 2>&1\\\""
-            """
-        }
     }
 }
- 
-    post {
-        success {
-            echo "✅ PIPELINE SUCCESS: Build, SonarQube analysis, and deployment completed successfully on server ${SERVER_NAME}."
-        }
-        failure {
-            echo "❌ PIPELINE FAILED: Check logs for build, SonarQube, or deployment errors."
-        }
-        always {
-            echo "ℹ️ Pipeline execution finished."
-        }
-    }
-}  
