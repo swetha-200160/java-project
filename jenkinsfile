@@ -2,49 +2,72 @@ pipeline {
     agent any
 
     environment {
-        SERVER_IP   = "192.168.0.60"
-        DEPLOY_PATH = "F:\\Deployments\\ONDC"
+        SERVER_NAME = "Can-Chn"
+        DEPLOY_PATH = "F:/Deployments/ONDC"
     }
 
     stages {
 
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://your-git-repo-url.git'
+                git branch: 'develop',
+                    url: 'https://github.com/swetha-200160/java-project.git',
+                    credentialsId: 'github-https'
             }
         }
 
         stage('Build JAR') {
             steps {
-                bat 'mvn clean package'
+                bat 'mvn clean package -DskipTests'
             }
         }
 
-        stage('Deploy JAR to Windows Server') {
+        stage('Deploy & Run JAR on Server') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'winrm-creds',
-                    usernameVariable: 'WIN_USER',
-                    passwordVariable: 'WIN_PASS'
-                )]) {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'winrm-creds',
+                        usernameVariable: 'WIN_USER',
+                        passwordVariable: 'WIN_PASS'
+                    )
+                ]) {
 
                     powershell '''
-                    $secpass = ConvertTo-SecureString "$env:WIN_PASS" -AsPlainText -Force
-                    $cred = New-Object System.Management.Automation.PSCredential("$env:WIN_USER", $secpass)
+                    Write-Host "Connecting to server $env:SERVER_NAME"
+                    Write-Host "Deploy path: $env:DEPLOY_PATH"
 
-                    # Ensure deployment folder exists on server
-                    Invoke-Command -ComputerName $env:SERVER_IP `
+                    $sec  = ConvertTo-SecureString $env:WIN_PASS -AsPlainText -Force
+                    $cred = New-Object System.Management.Automation.PSCredential($env:WIN_USER, $sec)
+
+                    $session = New-PSSession `
+                        -ComputerName $env:SERVER_NAME `
                         -Credential $cred `
-                        -ScriptBlock {
-                            if (!(Test-Path "F:\\Deployments\\ONDC")) {
-                                New-Item -ItemType Directory -Path "F:\\Deployments\\ONDC"
-                            }
-                        }
+                        -Authentication Kerberos
 
-                    # Copy JAR to server
-                    Copy-Item "target\\*.jar" `
-                        -Destination "\\\\192.168.0.60\\F$\\Deployments\\ONDC" `
+                    # COPY JAR FROM JENKINS TO SERVER
+                    Copy-Item `
+                        -Path "target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar" `
+                        -Destination "F:/Deployments/ONDC/BuyerApp-Motor-0.0.1-SNAPSHOT.jar" `
+                        -ToSession $session `
                         -Force
+
+                    Invoke-Command -Session $session -ScriptBlock {
+
+                        Set-Location "F:/Deployments/ONDC"
+
+                        Write-Host "Files in deploy folder:"
+                        dir
+
+                        Write-Host "Starting JAR..."
+
+                        Start-Process java `
+                          -ArgumentList "-jar BuyerApp-Motor-0.0.1-SNAPSHOT.jar" `
+                          -RedirectStandardOutput "ondc.out.log" `
+                          -RedirectStandardError  "ondc.err.log" `
+                          -NoNewWindow
+                    }
+
+                    Remove-PSSession $session
                     '''
                 }
             }
