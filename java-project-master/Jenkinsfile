@@ -1,69 +1,26 @@
 pipeline {
     agent any
 
-    environment {
-        JAVA_HOME = "C:\\Program Files\\Java\\jdk-17"
-        PATH = "${JAVA_HOME}\\bin;C:\\Program Files\\apache-maven-3.9.11\\bin;${env.PATH}"
-    }
-
     stages {
 
         stage('Checkout Code') {
             steps {
                 git branch: 'master',
-                    url: 'https://github.com/swetha-200160/java-project.git'
+                    url: 'https://github.com/swetha-200160/java-project.git',
+                    credentialsId: 'github'
             }
         }
 
-        stage('Build JAR') {
+        stage('Build + Generate SBOM') {
             steps {
-                dir('java-project-master') {
-                    bat 'mvn clean package'
-                }
+                bat 'mvn clean package'
             }
         }
 
-        stage('Store JAR in Folder') {
+        stage('Archive SBOM') {
             steps {
-                bat '''
-                if not exist C:\\deploy mkdir C:\\deploy
-                copy java-project-master\\target\\hello-jar-1.0.0.jar C:\\deploy\\
-                '''
+                archiveArtifacts artifacts: 'target/bom.*', fingerprint: true
             }
-        }
-
-       stage('Run JAR') {
-    steps {
-        bat '''
-        echo Starting application...
-        java -jar C:\\deploy\\hello-jar-1.0.0.jar
-        '''
-    }
-}
-
-
-        stage('Verify Deployment') {
-            steps {
-                powershell '''
-                Start-Sleep -Seconds 8
-                $port = netstat -ano | findstr 9090
-                if ($port) {
-                    Write-Host "✅ App is running on port 9090"
-                } else {
-                    Write-Error "❌ App NOT running"
-                    exit 1
-                }
-                '''
-            }
-        }
-    }
-
-    post {
-        success {
-            echo '🎉 Pipeline SUCCESS — App Deployed'
-        }
-        failure {
-            echo '💥 Pipeline FAILED'
         }
     }
 }
