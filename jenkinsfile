@@ -11,8 +11,8 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 git branch: 'develop',
-                    url: 'https://github.com/swetha-200160/java-project.git',
-                    credentialsId: 'github-https'
+                    url: 'git@github.com:swetha-200160/java-project.git',
+                    credentialsId: 'github-ssh'
             }
         }
 
