@@ -22,21 +22,6 @@ pipeline {
             }
         }
 
-        stage('Generate SBOM') {
-            steps {
-                bat '''
-                mvn org.cyclonedx:cyclonedx-maven-plugin:2.8.0:makeAggregateBom ^
-                  -DskipTests
-                '''
-            }
-        }
-
-        stage('Archive SBOM') {
-            steps {
-                archiveArtifacts artifacts: 'target/bom.*', fingerprint: true
-            }
-        }
-
         stage('Deploy & Run JAR on Server') {
             steps {
                 withCredentials([
@@ -62,7 +47,7 @@ pipeline {
                     # COPY JAR FROM JENKINS TO SERVER
                     Copy-Item `
                         -Path "target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar" `
-                        -Destination "$env:DEPLOY_PATH\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar" `
+                        -Destination "F:/Deployments/ONDC/BuyerApp-Motor-0.0.1-SNAPSHOT.jar" `
                         -ToSession $session `
                         -Force
 
