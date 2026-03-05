@@ -77,7 +77,18 @@ pipeline {
                         -Destination "$env:DEPLOY_PATH\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar" `
                         -ToSession $session `
                         -Force
+# COPY SBOM FILES TO SERVER
+Copy-Item `
+    -Path "target\\bom.json" `
+    -Destination "$env:DEPLOY_PATH\\bom.json" `
+    -ToSession $session `
+    -Force
 
+Copy-Item `
+    -Path "target\\bom.xml" `
+    -Destination "$env:DEPLOY_PATH\\bom.xml" `
+    -ToSession $session `
+    -Force
                     Invoke-Command -Session $session -ScriptBlock {
 
                         Set-Location "F:/Deployments/ONDC"
