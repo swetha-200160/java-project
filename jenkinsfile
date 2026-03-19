@@ -2,9 +2,7 @@ pipeline {
     agent any
 
     environment {
-        SERVER_60 = "Can-Chn"
-        SERVER_46 = "46_SERVER_IP"
-        DEPLOY_PATH = "F:/Deployments/ONDC"
+        SERVER_NAME = "Can-Chn"
     }
 
     stages {
@@ -39,106 +37,90 @@ pipeline {
 
         stage('Generate SBOM') {
             steps {
+                bat 'mvn org.cyclonedx:cyclonedx-maven-plugin:2.8.0:makeAggregateBom -DskipTests'
+            }
+        }
+
+        stage('Generate ABOM') {
+            steps {
                 bat '''
-                mvn org.cyclonedx:cyclonedx-maven-plugin:2.8.0:makeAggregateBom -DskipTests
+                echo ===== GENERATING ABOM =====
+
+                syft.exe target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-json > target\\abom.json
+                syft.exe target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-xml > target\\abom.xml
+
+                echo ===== ABOM DONE =====
                 '''
             }
         }
 
-stage('Generate ABOM') {
-    steps {
-        bat '''
-        echo ===== GENERATING ABOM =====
-
-        cd target
-
-        ..\\syft.exe BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-json=abom.json
-        ..\\syft.exe BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-xml=abom.xml
-
-        echo ===== ABOM DONE =====
-        '''
-    }
-}
-        stage('Deploy to 46 via 60') {
+        stage('Archive SBOM') {
             steps {
-                withCredentials([
-                    usernamePassword(credentialsId: 'winrm-creds', usernameVariable: 'USER', passwordVariable: 'PASS')
-                ]) {
-
-                    powershell '''
-                    Write-Host "Starting Deployment..."
-
-                    $sec  = ConvertTo-SecureString $env:PASS -AsPlainText -Force
-                    $cred = New-Object System.Management.Automation.PSCredential($env:USER, $sec)
-
-                    # CONNECT TO 60 SERVER
-                    $s60 = New-PSSession -ComputerName $env:SERVER_60 -Credential $cred
-                    Write-Host "Connected to 60 Server"
-
-                    # COPY FILES TO 60 SERVER
-                    Copy-Item target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar -Destination C:\\Temp\\app.jar -ToSession $s60 -Force
-                    Copy-Item target\\bom.json -Destination C:\\Temp\\bom.json -ToSession $s60 -Force
-                    Copy-Item target\\bom.xml -Destination C:\\Temp\\bom.xml -ToSession $s60 -Force
-                    Copy-Item target\\abom.json -Destination C:\\Temp\\abom.json -ToSession $s60 -Force
-                    Copy-Item target\\abom.xml -Destination C:\\Temp\\abom.xml -ToSession $s60 -Force
-
-                    Write-Host "Files copied to 60 server"
-
-                    # ✅ MOVE FILES TO C DRIVE ON 60
-                    Invoke-Command -Session $s60 -ScriptBlock {
-
-                        Write-Host "Moving files to C:\\test.ondc..."
-
-                        if (!(Test-Path "C:\\test.ondc")) {
-                            New-Item -ItemType Directory -Path "C:\\test.ondc"
-                        }
-
-                        Copy-Item "C:\\Temp\\*" -Destination "C:\\test.ondc\\" -Recurse -Force
-
-                        Write-Host "Files moved successfully"
-                    }
-
-                    # FROM 60 → 46
-                    Invoke-Command -Session $s60 -ScriptBlock {
-
-                        param($user, $pass, $server46, $deployPath)
-
-                        $sec2 = ConvertTo-SecureString $pass -AsPlainText -Force
-                        $cred2 = New-Object System.Management.Automation.PSCredential($user, $sec2)
-
-                        Write-Host "Connecting to 46 Server..."
-
-                        $s46 = New-PSSession -ComputerName $server46 -Credential $cred2
-
-                        # COPY FILES TO 46
-                        Copy-Item C:\\Temp\\app.jar -Destination "$deployPath\\app.jar" -FromSession $using:s60 -ToSession $s46 -Force
-                        Copy-Item C:\\Temp\\bom.json -Destination "$deployPath\\bom.json" -FromSession $using:s60 -ToSession $s46 -Force
-                        Copy-Item C:\\Temp\\bom.xml -Destination "$deployPath\\bom.xml" -FromSession $using:s60 -ToSession $s46 -Force
-                        Copy-Item C:\\Temp\\abom.json -Destination "$deployPath\\abom.json" -FromSession $using:s60 -ToSession $s46 -Force
-                        Copy-Item C:\\Temp\\abom.xml -Destination "$deployPath\\abom.xml" -FromSession $using:s60 -ToSession $s46 -Force
-
-                        Write-Host "Files copied to 46 server"
-
-                        # RUN APP
-                        Invoke-Command -Session $s46 -ScriptBlock {
-                            Set-Location "F:\\Deployments\\ONDC"
-
-                            Start-Process java `
-                              -ArgumentList "-jar app.jar" `
-                              -RedirectStandardOutput "app.out.log" `
-                              -RedirectStandardError "app.err.log" `
-                              -NoNewWindow
-                        }
-
-                        Remove-PSSession $s46
-                    } -ArgumentList $env:USER, $env:PASS, $env:SERVER_46, $env:DEPLOY_PATH
-
-                    Remove-PSSession $s60
-
-                    Write-Host "Deployment Completed Successfully"
-                    '''
-                }
+                archiveArtifacts artifacts: 'target/bom.*', fingerprint: true
             }
         }
-    }
-}
+
+        // ✅ FIXED DEPLOY STAGE
+        stage('Deploy to Server 46 (WinRM)') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'winrm-creds',
+                        usernameVariable: 'WIN_USER',
+                        passwordVariable: 'WIN_PASS'
+                    )
+                ]) {
+                    powershell '''
+
+                    # -------- WINRM CONNECT --------
+                    $SERVER = "192.168.0.46"
+
+                    $sec  = ConvertTo-SecureString $env:WIN_PASS -AsPlainText -Force
+                    $cred = New-Object System.Management.Automation.PSCredential($env:WIN_USER, $sec)
+
+                    Write-Host "Connecting to Server 46..."
+
+                    $session = New-PSSession -ComputerName $SERVER -Credential $cred -Authentication Negotiate
+
+                    # -------- COPY FILES --------
+                    $localPath = "target\\*"
+                    $remotePath = "C:\\Users\\swethasuresh\\test.ondc"
+
+                    Write-Host "Copying files..."
+
+                    Invoke-Command -Session $session -ScriptBlock {
+                        param($remotePath)
+
+                        if (!(Test-Path $remotePath)) {
+                            New-Item -ItemType Directory -Path $remotePath
+                        }
+                    } -ArgumentList $remotePath
+
+                    Copy-Item -Path $localPath -Destination $remotePath -ToSession $session -Recurse -Force
+
+                    # -------- RUN APP --------
+                    Invoke-Command -Session $session -ScriptBlock {
+
+                        $destPath = "C:\\Users\\swethasuresh\\test.ondc"
+
+                        Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
+
+                        Set-Location $destPath
+
+                        Start-Process java `
+                          -ArgumentList "-jar BuyerApp-Motor-0.0.1-SNAPSHOT.jar" `
+                          -RedirectStandardOutput "app.out.log" `
+                          -RedirectStandardError "app.err.log" `
+                          -NoNewWindow
+                    }
+
+                    Remove-PSSession $session
+
+                    Write-Host "Deployment Completed"
+                    '''
+                }   // ✅ withCredentials closed
+            }       // ✅ steps closed
+        }           // ✅ stage closed
+
+    }   // ✅ stages closed
+}       // ✅ pipeline closed
