@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        SERVER_NAME = "Can-Chn"
+        SERVER_NAME = "RS-server"
     }
 
     stages {
@@ -58,9 +58,7 @@ pipeline {
             steps {
                 archiveArtifacts artifacts: 'target/bom.*', fingerprint: true
             }
-        }
-
-        // ✅ FIXED DEPLOY STAGE
+        }    // ✅ FIXED DEPLOY STAGE
         stage('Deploy to Server 46 (WinRM)') {
             steps {
                 withCredentials([
