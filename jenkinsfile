@@ -58,7 +58,8 @@ pipeline {
             steps {
                 archiveArtifacts artifacts: 'target/bom.*', fingerprint: true
             }
-        }    // ✅ FIXED DEPLOY STAGE
+        }
+
         stage('Deploy to Server 46 (WinRM)') {
             steps {
                 withCredentials([
@@ -70,55 +71,61 @@ pipeline {
                 ]) {
                     powershell '''
 
-                    # -------- WINRM CONNECT --------
+                    # -------- CONNECT --------
                     $SERVER = "192.168.0.46"
 
                     $sec  = ConvertTo-SecureString $env:WIN_PASS -AsPlainText -Force
                     $cred = New-Object System.Management.Automation.PSCredential($env:WIN_USER, $sec)
 
                     Write-Host "Connecting to Server 46..."
-
                     $session = New-PSSession -ComputerName $SERVER -Credential $cred -Authentication Negotiate
 
-                    # -------- COPY FILES --------
-                    $localPath = "target\\*"
-                    $remotePath = "C:\\Users\\swethasuresh\\test.ondc"
+                    # -------- PATHS --------
+                    $localJar  = "target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
+                    $remoteDir = "C:\\Users\\swethasuresh\\test.ondc"
 
-                    Write-Host "Copying files..."
-
+                    # -------- CREATE FOLDER --------
                     Invoke-Command -Session $session -ScriptBlock {
-                        param($remotePath)
-
-                        if (!(Test-Path $remotePath)) {
-                            New-Item -ItemType Directory -Path $remotePath
+                        param($remoteDir)
+                        if (!(Test-Path $remoteDir)) {
+                            New-Item -ItemType Directory -Path $remoteDir
                         }
-                    } -ArgumentList $remotePath
+                    } -ArgumentList $remoteDir
 
-                    Copy-Item -Path $localPath -Destination $remotePath -ToSession $session -Recurse -Force
+                    # -------- COPY JAR --------
+                    Write-Host "Copying JAR..."
+                    Copy-Item -Path $localJar -Destination $remoteDir -ToSession $session -Force
 
-                    # -------- RUN APP --------
+                    # -------- RUN JAR --------
                     Invoke-Command -Session $session -ScriptBlock {
+                        param($remoteDir)
 
-                        $destPath = "C:\\Users\\swethasuresh\\test.ondc"
+                        Set-Location $remoteDir
 
+                        Write-Host "Stopping old application..."
                         Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
 
-                        Set-Location $destPath
+                        Start-Sleep -Seconds 3
 
-                        Start-Process java `
+                        Write-Host "Starting new application..."
+
+                        Start-Process "java" `
                           -ArgumentList "-jar BuyerApp-Motor-0.0.1-SNAPSHOT.jar" `
-                          -RedirectStandardOutput "app.out.log" `
-                          -RedirectStandardError "app.err.log" `
+                          -WorkingDirectory $remoteDir `
+                          -RedirectStandardOutput "$remoteDir\\app.out.log" `
+                          -RedirectStandardError "$remoteDir\\app.err.log" `
                           -NoNewWindow
-                    }
 
+                    } -ArgumentList $remoteDir
+
+                    # -------- CLOSE SESSION --------
                     Remove-PSSession $session
 
-                    Write-Host "Deployment Completed"
-                    '''
-                }   // ✅ withCredentials closed
-            }       // ✅ steps closed
-        }           // ✅ stage closed
+                    Write-Host "Deployment Completed Successfully"
 
-    }   // ✅ stages closed
-}       // ✅ pipeline closed
+                    '''
+                }
+            }
+        }
+    }
+}
