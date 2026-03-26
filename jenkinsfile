@@ -45,10 +45,8 @@ pipeline {
             steps {
                 bat '''
                 echo ===== GENERATING ABOM =====
- 
                 syft.exe target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-json > target\\abom.json
                 syft.exe target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-xml > target\\abom.xml
- 
                 echo ===== ABOM DONE =====
                 '''
             }
@@ -89,11 +87,33 @@ pipeline {
                     Write-Host "ONDC JAR DEPLOYMENT STARTED"
                     Write-Host "======================================"
 
-                    # -------- STOP + BACKUP OLD JAR --------
+                    # -------- PORT BASED STOP + BACKUP --------
                     Invoke-Command -Session $session -ScriptBlock {
                         param($remoteDir, $jarName)
 
-                        Set-Location $remoteDir
+                        $port = 9998
+
+                        Write-Host "======================================"
+                        Write-Host "STEP 1: STOP PROCESS USING PORT"
+                        Write-Host "======================================"
+
+                        $pid = (Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue).OwningProcess
+
+                        if ($pid) {
+                            Write-Host "Port $port is used by PID: $pid"
+
+                            if (Get-Process -Id $pid -ErrorAction SilentlyContinue) {
+                                Write-Host "Stopping process..."
+                                Stop-Process -Id $pid -Force
+                                Start-Sleep -Seconds 3
+                            }
+                        } else {
+                            Write-Host "No process found on port $port"
+                        }
+
+                        Write-Host "======================================"
+                        Write-Host "STEP 2: BACKUP OLD JAR"
+                        Write-Host "======================================"
 
                         $jarPath   = Join-Path $remoteDir $jarName
                         $backupDir = Join-Path $remoteDir "backup"
@@ -102,29 +122,13 @@ pipeline {
                             New-Item -ItemType Directory -Path $backupDir | Out-Null
                         }
 
-                        Write-Host "Finding running JAR process..."
-
-                        $processes = Get-CimInstance Win32_Process | Where-Object {
-                            $_.CommandLine -match [regex]::Escape($jarName)
-                        }
-
-                        if ($processes) {
-                            foreach ($p in $processes) {
-                                Write-Host ("Found PID: " + $p.ProcessId)
-                                Write-Host ("Stopping PID: " + $p.ProcessId)
-                                Stop-Process -Id $p.ProcessId -Force
-                            }
-                            Start-Sleep -Seconds 3
-                        } else {
-                            Write-Host "No running process found"
-                        }
-
                         if (Test-Path $jarPath) {
                             $timestamp = Get-Date -Format "yyyyMMddHHmmss"
                             $backupPath = "$backupDir\\$jarName-$timestamp"
 
                             Write-Host "Moving old JAR to backup..."
-                            Move-Item $jarPath $backupPath
+                            Move-Item $jarPath $backupPath -Force
+
                             Write-Host "Backup created: $backupPath"
                         } else {
                             Write-Host "No old JAR found"
