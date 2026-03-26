@@ -1,15 +1,12 @@
 pipeline {
     agent any
-
+ 
     environment {
         SERVER_NAME = "RS-server"
-        REMOTE_SERVER = "192.168.0.46"
-        REMOTE_DIR = "C:\\Users\\swethasuresh\\test.ondc"
-        JAR_NAME = "BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
     }
-
+ 
     stages {
-
+ 
         stage('Checkout Code') {
             steps {
                 git branch: 'develop',
@@ -17,13 +14,13 @@ pipeline {
                     credentialsId: 'github-ssh'
             }
         }
-
+ 
         stage('Build JAR') {
             steps {
                 bat 'mvn clean package -DskipTests'
             }
         }
-
+ 
         stage('SonarQube Analysis') {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
@@ -37,32 +34,32 @@ pipeline {
                 }
             }
         }
-
+ 
         stage('Generate SBOM') {
             steps {
                 bat 'mvn org.cyclonedx:cyclonedx-maven-plugin:2.8.0:makeAggregateBom -DskipTests'
             }
         }
-
+ 
         stage('Generate ABOM') {
             steps {
                 bat '''
                 echo ===== GENERATING ABOM =====
-
+ 
                 syft.exe target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-json > target\\abom.json
                 syft.exe target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-xml > target\\abom.xml
-
+ 
                 echo ===== ABOM DONE =====
                 '''
             }
         }
-
+ 
         stage('Archive SBOM') {
             steps {
                 archiveArtifacts artifacts: 'target/bom.*', fingerprint: true
             }
         }
-
+ 
         stage('Deploy to Server 46 (WinRM)') {
             steps {
                 withCredentials([
@@ -75,7 +72,7 @@ pipeline {
                     powershell '''
 
                     # -------- CONNECT --------
-                    $SERVER = "${env.REMOTE_SERVER}"
+                    $SERVER = "192.168.0.46"
 
                     $sec  = ConvertTo-SecureString $env:WIN_PASS -AsPlainText -Force
                     $cred = New-Object System.Management.Automation.PSCredential($env:WIN_USER, $sec)
@@ -84,23 +81,28 @@ pipeline {
                     $session = New-PSSession -ComputerName $SERVER -Credential $cred -Authentication Negotiate
 
                     # -------- PATHS --------
-                    $localJar  = "target\\${env.JAR_NAME}"
-                    $remoteDir = "${env.REMOTE_DIR}"
-                    $jarName   = "${env.JAR_NAME}"
+                    $localJar  = "target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
+                    $remoteDir = "C:\\Users\\swethasuresh\\test.ondc"
+                    $jarName   = "BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
 
-                    # -------- CREATE FOLDER --------
+                    Write-Host "======================================"
+                    Write-Host "ONDC JAR DEPLOYMENT STARTED"
+                    Write-Host "======================================"
+
+                    # -------- STOP + BACKUP OLD JAR --------
                     Invoke-Command -Session $session -ScriptBlock {
-                        param($remoteDir)
-                        if (!(Test-Path $remoteDir)) {
-                            New-Item -ItemType Directory -Path $remoteDir | Out-Null
+                        param($remoteDir, $jarName)
+
+                        Set-Location $remoteDir
+
+                        $jarPath   = Join-Path $remoteDir $jarName
+                        $backupDir = Join-Path $remoteDir "backup"
+
+                        if (!(Test-Path $backupDir)) {
+                            New-Item -ItemType Directory -Path $backupDir | Out-Null
                         }
-                    } -ArgumentList $remoteDir
 
-                    # -------- SHOW + STOP OLD JAR USING PID --------
-                    Invoke-Command -Session $session -ScriptBlock {
-                        param($jarName)
-
-                        Write-Host "🔍 Checking running ONDC JAR..."
+                        Write-Host "Finding running JAR process..."
 
                         $processes = Get-CimInstance Win32_Process | Where-Object {
                             $_.CommandLine -match [regex]::Escape($jarName)
@@ -108,27 +110,30 @@ pipeline {
 
                         if ($processes) {
                             foreach ($p in $processes) {
-
-                                Write-Host "================================="
-                                Write-Host "FOUND PID: $($p.ProcessId)"
-                                Write-Host "COMMAND: $($p.CommandLine)"
-                                Write-Host "================================="
-
+                                Write-Host ("Found PID: " + $p.ProcessId)
+                                Write-Host ("Stopping PID: " + $p.ProcessId)
                                 Stop-Process -Id $p.ProcessId -Force
-
-                                Write-Host "❌ STOPPED PID: $($p.ProcessId)"
                             }
-
                             Start-Sleep -Seconds 3
-                        }
-                        else {
-                            Write-Host "No ONDC JAR running"
+                        } else {
+                            Write-Host "No running process found"
                         }
 
-                    } -ArgumentList $jarName
+                        if (Test-Path $jarPath) {
+                            $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+                            $backupPath = "$backupDir\\$jarName-$timestamp"
+
+                            Write-Host "Moving old JAR to backup..."
+                            Move-Item $jarPath $backupPath
+                            Write-Host "Backup created: $backupPath"
+                        } else {
+                            Write-Host "No old JAR found"
+                        }
+
+                    } -ArgumentList $remoteDir, $jarName
 
                     # -------- COPY NEW JAR --------
-                    Write-Host "📦 Copying new JAR..."
+                    Write-Host "Copying new JAR..."
                     Copy-Item -Path $localJar -Destination $remoteDir -ToSession $session -Force
 
                     # -------- START NEW JAR --------
@@ -137,27 +142,28 @@ pipeline {
 
                         Set-Location $remoteDir
 
-                        Write-Host "🚀 Starting new ONDC JAR..."
+                        Write-Host "Starting new application..."
 
                         Start-Process "java" `
-                          -ArgumentList "-jar $jarName" `
+                          -ArgumentList ("-jar " + $jarName) `
                           -WorkingDirectory $remoteDir `
-                          -RedirectStandardOutput "$remoteDir\\app.out.log" `
-                          -RedirectStandardError "$remoteDir\\app.err.log" `
-                          -NoNewWindow
+                          -RedirectStandardOutput ($remoteDir + "\\app.out.log") `
+                          -RedirectStandardError ($remoteDir + "\\app.err.log")
 
                         Start-Sleep -Seconds 5
 
-                        # -------- VERIFY START --------
                         $newProcess = Get-CimInstance Win32_Process | Where-Object {
                             $_.CommandLine -match [regex]::Escape($jarName)
                         }
 
                         if ($newProcess) {
-                            Write-Host "✅ New JAR started successfully"
-                            $newProcess | Select ProcessId, CommandLine
+                            Write-Host "New JAR started successfully"
+                            foreach ($p in $newProcess) {
+                                Write-Host ("NEW PID: " + $p.ProcessId)
+                            }
                         } else {
-                            Write-Host "❌ New JAR failed to start"
+                            Write-Host "ERROR: Failed to start new JAR"
+                            exit 1
                         }
 
                     } -ArgumentList $remoteDir, $jarName
@@ -165,7 +171,9 @@ pipeline {
                     # -------- CLOSE SESSION --------
                     Remove-PSSession $session
 
-                    Write-Host "🎉 Deployment Completed Successfully"
+                    Write-Host "======================================"
+                    Write-Host "DEPLOYMENT COMPLETED"
+                    Write-Host "======================================"
 
                     '''
                 }
