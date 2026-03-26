@@ -1,12 +1,12 @@
 pipeline {
     agent any
- 
+
     environment {
         SERVER_NAME = "RS-server"
     }
- 
+
     stages {
- 
+
         stage('Checkout Code') {
             steps {
                 git branch: 'develop',
@@ -14,13 +14,13 @@ pipeline {
                     credentialsId: 'github-ssh'
             }
         }
- 
+
         stage('Build JAR') {
             steps {
                 bat 'mvn clean package -DskipTests'
             }
         }
- 
+
         stage('SonarQube Analysis') {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
@@ -34,32 +34,32 @@ pipeline {
                 }
             }
         }
- 
+
         stage('Generate SBOM') {
             steps {
                 bat 'mvn org.cyclonedx:cyclonedx-maven-plugin:2.8.0:makeAggregateBom -DskipTests'
             }
         }
- 
+
         stage('Generate ABOM') {
             steps {
                 bat '''
                 echo ===== GENERATING ABOM =====
- 
+
                 syft.exe target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-json > target\\abom.json
                 syft.exe target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-xml > target\\abom.xml
- 
+
                 echo ===== ABOM DONE =====
                 '''
             }
         }
- 
+
         stage('Archive SBOM') {
             steps {
                 archiveArtifacts artifacts: 'target/bom.*', fingerprint: true
             }
         }
- 
+
         stage('Deploy to Server 46 (WinRM)') {
             steps {
                 withCredentials([
@@ -70,20 +70,21 @@ pipeline {
                     )
                 ]) {
                     powershell '''
- 
+
                     # -------- CONNECT --------
                     $SERVER = "192.168.0.46"
- 
+
                     $sec  = ConvertTo-SecureString $env:WIN_PASS -AsPlainText -Force
                     $cred = New-Object System.Management.Automation.PSCredential($env:WIN_USER, $sec)
- 
+
                     Write-Host "Connecting to Server 46..."
                     $session = New-PSSession -ComputerName $SERVER -Credential $cred -Authentication Negotiate
- 
+
                     # -------- PATHS --------
                     $localJar  = "target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
                     $remoteDir = "C:\\Users\\swethasuresh\\test.ondc"
- 
+                    $jarName   = "BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
+
                     # -------- CREATE FOLDER --------
                     Invoke-Command -Session $session -ScriptBlock {
                         param($remoteDir)
@@ -91,41 +92,61 @@ pipeline {
                             New-Item -ItemType Directory -Path $remoteDir
                         }
                     } -ArgumentList $remoteDir
- 
-                    # -------- COPY JAR --------
+
+                    # -------- STOP ONLY YOUR JAR USING PID --------
+                    Invoke-Command -Session $session -ScriptBlock {
+                        param($remoteDir, $jarName)
+
+                        Set-Location $remoteDir
+
+                        Write-Host "Finding ONDC JAR process..."
+
+                        $processes = Get-CimInstance Win32_Process | Where-Object {
+                            $_.CommandLine -match [regex]::Escape($jarName)
+                        }
+
+                        if ($processes) {
+                            foreach ($p in $processes) {
+                                Write-Host "Stopping PID: $($p.ProcessId)"
+                                Stop-Process -Id $p.ProcessId -Force
+                            }
+                            Start-Sleep -Seconds 3
+                            Write-Host "Old ONDC JAR stopped"
+                        } else {
+                            Write-Host "No ONDC JAR running"
+                        }
+
+                    } -ArgumentList $remoteDir, $jarName
+
+                    # -------- COPY NEW JAR --------
                     Write-Host "Copying JAR..."
                     Copy-Item -Path $localJar -Destination $remoteDir -ToSession $session -Force
- 
-                    # -------- RUN JAR --------
+
+                    # -------- START NEW JAR --------
                     Invoke-Command -Session $session -ScriptBlock {
-                        param($remoteDir)
- 
+                        param($remoteDir, $jarName)
+
                         Set-Location $remoteDir
- 
-                        Write-Host "Stopping old application..."
-                        Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
- 
-                        Start-Sleep -Seconds 3
- 
+
                         Write-Host "Starting new application..."
- 
+
                         Start-Process "java" `
-                          -ArgumentList "-jar BuyerApp-Motor-0.0.1-SNAPSHOT.jar" `
+                          -ArgumentList "-jar $jarName" `
                           -WorkingDirectory $remoteDir `
                           -RedirectStandardOutput "$remoteDir\\app.out.log" `
                           -RedirectStandardError "$remoteDir\\app.err.log" `
                           -NoNewWindow
- 
-                    } -ArgumentList $remoteDir
- 
+
+                    } -ArgumentList $remoteDir, $jarName
+
                     # -------- CLOSE SESSION --------
                     Remove-PSSession $session
- 
+
                     Write-Host "Deployment Completed Successfully"
- 
+
                     '''
                 }
             }
         }
     }
-}    
+}
