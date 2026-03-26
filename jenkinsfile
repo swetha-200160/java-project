@@ -1,12 +1,12 @@
 pipeline {
     agent any
- 
+
     environment {
         SERVER_NAME = "RS-server"
     }
- 
+
     stages {
- 
+
         stage('Checkout Code') {
             steps {
                 git branch: 'develop',
@@ -14,13 +14,13 @@ pipeline {
                     credentialsId: 'github-ssh'
             }
         }
- 
+
         stage('Build JAR') {
             steps {
                 bat 'mvn clean package -DskipTests'
             }
         }
- 
+
         stage('SonarQube Analysis') {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
@@ -34,30 +34,7 @@ pipeline {
                 }
             }
         }
- 
-        stage('Generate SBOM') {
-            steps {
-                bat 'mvn org.cyclonedx:cyclonedx-maven-plugin:2.8.0:makeAggregateBom -DskipTests'
-            }
-        }
- 
-        stage('Generate ABOM') {
-            steps {
-                bat '''
-                echo ===== GENERATING ABOM =====
-                syft.exe target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-json > target\\abom.json
-                syft.exe target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-xml > target\\abom.xml
-                echo ===== ABOM DONE =====
-                '''
-            }
-        }
- 
-        stage('Archive SBOM') {
-            steps {
-                archiveArtifacts artifacts: 'target/bom.*', fingerprint: true
-            }
-        }
- 
+
         stage('Deploy to Server 46 (WinRM)') {
             steps {
                 withCredentials([
@@ -78,6 +55,11 @@ pipeline {
                     Write-Host "Connecting to Server 46..."
                     $session = New-PSSession -ComputerName $SERVER -Credential $cred -Authentication Negotiate
 
+                    if ($session.State -ne "Opened") {
+                        Write-Host "ERROR: Session not opened"
+                        exit 1
+                    }
+
                     # -------- PATHS --------
                     $localJar  = "target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
                     $remoteDir = "C:\\Users\\swethasuresh\\test.ondc"
@@ -87,26 +69,23 @@ pipeline {
                     Write-Host "ONDC JAR DEPLOYMENT STARTED"
                     Write-Host "======================================"
 
-                    # -------- PORT BASED STOP + BACKUP --------
+                    # -------- KILL + BACKUP --------
                     Invoke-Command -Session $session -ScriptBlock {
                         param($remoteDir, $jarName)
 
                         $port = 9998
 
                         Write-Host "======================================"
-                        Write-Host "STEP 1: STOP PROCESS USING PORT"
+                        Write-Host "STEP 1: FIND PID & KILL PROCESS"
                         Write-Host "======================================"
 
+                        # ✅ YOUR LOGIC (FIXED)
                         $pid = (Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue).OwningProcess
 
                         if ($pid) {
-                            Write-Host "Port $port is used by PID: $pid"
-
-                            if (Get-Process -Id $pid -ErrorAction SilentlyContinue) {
-                                Write-Host "Stopping process..."
-                                Stop-Process -Id $pid -Force
-                                Start-Sleep -Seconds 3
-                            }
+                            Write-Host "Killing process on port $port (PID: $pid)"
+                            Stop-Process -Id $pid -Force
+                            Start-Sleep -Seconds 5
                         } else {
                             Write-Host "No process found on port $port"
                         }
@@ -126,9 +105,7 @@ pipeline {
                             $timestamp = Get-Date -Format "yyyyMMddHHmmss"
                             $backupPath = "$backupDir\\$jarName-$timestamp"
 
-                            Write-Host "Moving old JAR to backup..."
                             Move-Item $jarPath $backupPath -Force
-
                             Write-Host "Backup created: $backupPath"
                         } else {
                             Write-Host "No old JAR found"
@@ -137,8 +114,13 @@ pipeline {
                     } -ArgumentList $remoteDir, $jarName
 
                     # -------- COPY NEW JAR --------
-                    Write-Host "Copying new JAR..."
-                    Copy-Item -Path $localJar -Destination $remoteDir -ToSession $session -Force
+                    if ($session.State -eq "Opened") {
+                        Write-Host "Copying new JAR..."
+                        Copy-Item -Path $localJar -Destination $remoteDir -ToSession $session -Force
+                    } else {
+                        Write-Host "ERROR: Session broken before copy"
+                        exit 1
+                    }
 
                     # -------- START NEW JAR --------
                     Invoke-Command -Session $session -ScriptBlock {
@@ -161,7 +143,6 @@ pipeline {
                         }
 
                         if ($newProcess) {
-                            Write-Host "New JAR started successfully"
                             foreach ($p in $newProcess) {
                                 Write-Host ("NEW PID: " + $p.ProcessId)
                             }
