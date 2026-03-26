@@ -3,6 +3,9 @@ pipeline {
 
     environment {
         SERVER_NAME = "RS-server"
+        REMOTE_SERVER = "192.168.0.46"
+        REMOTE_DIR = "C:\\Users\\swethasuresh\\test.ondc"
+        JAR_NAME = "BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
     }
 
     stages {
@@ -72,7 +75,7 @@ pipeline {
                     powershell '''
 
                     # -------- CONNECT --------
-                    $SERVER = "192.168.0.46"
+                    $SERVER = "${env.REMOTE_SERVER}"
 
                     $sec  = ConvertTo-SecureString $env:WIN_PASS -AsPlainText -Force
                     $cred = New-Object System.Management.Automation.PSCredential($env:WIN_USER, $sec)
@@ -81,25 +84,23 @@ pipeline {
                     $session = New-PSSession -ComputerName $SERVER -Credential $cred -Authentication Negotiate
 
                     # -------- PATHS --------
-                    $localJar  = "target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
-                    $remoteDir = "C:\\Users\\swethasuresh\\test.ondc"
-                    $jarName   = "BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
+                    $localJar  = "target\\${env.JAR_NAME}"
+                    $remoteDir = "${env.REMOTE_DIR}"
+                    $jarName   = "${env.JAR_NAME}"
 
                     # -------- CREATE FOLDER --------
                     Invoke-Command -Session $session -ScriptBlock {
                         param($remoteDir)
                         if (!(Test-Path $remoteDir)) {
-                            New-Item -ItemType Directory -Path $remoteDir
+                            New-Item -ItemType Directory -Path $remoteDir | Out-Null
                         }
                     } -ArgumentList $remoteDir
 
-                    # -------- STOP ONLY YOUR JAR USING PID --------
+                    # -------- SHOW + STOP OLD JAR USING PID --------
                     Invoke-Command -Session $session -ScriptBlock {
-                        param($remoteDir, $jarName)
+                        param($jarName)
 
-                        Set-Location $remoteDir
-
-                        Write-Host "Finding ONDC JAR process..."
+                        Write-Host "🔍 Checking running ONDC JAR..."
 
                         $processes = Get-CimInstance Win32_Process | Where-Object {
                             $_.CommandLine -match [regex]::Escape($jarName)
@@ -107,19 +108,27 @@ pipeline {
 
                         if ($processes) {
                             foreach ($p in $processes) {
-                                Write-Host "Stopping PID: $($p.ProcessId)"
+
+                                Write-Host "================================="
+                                Write-Host "FOUND PID: $($p.ProcessId)"
+                                Write-Host "COMMAND: $($p.CommandLine)"
+                                Write-Host "================================="
+
                                 Stop-Process -Id $p.ProcessId -Force
+
+                                Write-Host "❌ STOPPED PID: $($p.ProcessId)"
                             }
+
                             Start-Sleep -Seconds 3
-                            Write-Host "Old ONDC JAR stopped"
-                        } else {
+                        }
+                        else {
                             Write-Host "No ONDC JAR running"
                         }
 
-                    } -ArgumentList $remoteDir, $jarName
+                    } -ArgumentList $jarName
 
                     # -------- COPY NEW JAR --------
-                    Write-Host "Copying JAR..."
+                    Write-Host "📦 Copying new JAR..."
                     Copy-Item -Path $localJar -Destination $remoteDir -ToSession $session -Force
 
                     # -------- START NEW JAR --------
@@ -128,7 +137,7 @@ pipeline {
 
                         Set-Location $remoteDir
 
-                        Write-Host "Starting new application..."
+                        Write-Host "🚀 Starting new ONDC JAR..."
 
                         Start-Process "java" `
                           -ArgumentList "-jar $jarName" `
@@ -137,12 +146,26 @@ pipeline {
                           -RedirectStandardError "$remoteDir\\app.err.log" `
                           -NoNewWindow
 
+                        Start-Sleep -Seconds 5
+
+                        # -------- VERIFY START --------
+                        $newProcess = Get-CimInstance Win32_Process | Where-Object {
+                            $_.CommandLine -match [regex]::Escape($jarName)
+                        }
+
+                        if ($newProcess) {
+                            Write-Host "✅ New JAR started successfully"
+                            $newProcess | Select ProcessId, CommandLine
+                        } else {
+                            Write-Host "❌ New JAR failed to start"
+                        }
+
                     } -ArgumentList $remoteDir, $jarName
 
                     # -------- CLOSE SESSION --------
                     Remove-PSSession $session
 
-                    Write-Host "Deployment Completed Successfully"
+                    Write-Host "🎉 Deployment Completed Successfully"
 
                     '''
                 }
