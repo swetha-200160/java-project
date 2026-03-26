@@ -1,8 +1,13 @@
 pipeline {
     agent any
 
+    tools {
+        maven 'Maven'
+        jdk 'JDK11'
+    }
+
     environment {
-        SERVER_NAME = "RS-server"
+        SONARQUBE_ENV = 'SonarQubeServer'
     }
 
     stages {
@@ -10,8 +15,31 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 git branch: 'develop',
-                    url: 'git@github.com:swetha-200160/java-project.git',
+                    url: 'git@github.com:swetha-200160/repository.git',
                     credentialsId: 'github-ssh'
+            }
+        }
+
+        stage('Test + SonarQube') {
+            steps {
+                withSonarQubeEnv("${SONARQUBE_ENV}") {
+                    
+                    bat """
+                    mvn clean verify sonar:sonar ^
+                    -Dsonar.projectKey=ondc-project ^
+                    -Dsonar.projectName=ondc-project ^
+                    -Dsonar.host.url=http://localhost:9000 ^
+                    -Dsonar.login=YOUR_TOKEN
+                    """
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 2, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
             }
         }
 
@@ -20,112 +48,14 @@ pipeline {
                 bat 'mvn clean package -DskipTests'
             }
         }
+    }
 
-        stage('SonarQube Analysis') {
-            steps {
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    bat """
-                    mvnw.cmd sonar:sonar ^
-                      -Dsonar.host.url=https://test.canvendor.co.in/sonarqube ^
-                      -Dsonar.login=%SONAR_TOKEN% ^
-                      -Dsonar.projectKey=BuyerApp-Motor ^
-                      -Dsonar.projectName=BuyerApp-Motor
-                    """
-                }
-            }
+    post {
+        success {
+            echo 'SUCCESS ✅'
         }
-
-        stage('Generate SBOM') {
-            steps {
-                bat 'mvn org.cyclonedx:cyclonedx-maven-plugin:2.8.0:makeAggregateBom -DskipTests'
-            }
-        }
-
-        stage('Generate ABOM') {
-            steps {
-                bat '''
-                echo ===== GENERATING ABOM =====
-
-                syft.exe target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-json > target\\abom.json
-                syft.exe target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar -o cyclonedx-xml > target\\abom.xml
-
-                echo ===== ABOM DONE =====
-                '''
-            }
-        }
-
-        stage('Archive SBOM') {
-            steps {
-                archiveArtifacts artifacts: 'target/bom.*', fingerprint: true
-            }
-        }
-
-        stage('Deploy to Server 46 (WinRM)') {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'winrm-creds',
-                        usernameVariable: 'WIN_USER',
-                        passwordVariable: 'WIN_PASS'
-                    )
-                ]) {
-                    powershell '''
-
-                    # -------- CONNECT --------
-                    $SERVER = "192.168.0.46"
-
-                    $sec  = ConvertTo-SecureString $env:WIN_PASS -AsPlainText -Force
-                    $cred = New-Object System.Management.Automation.PSCredential($env:WIN_USER, $sec)
-
-                    Write-Host "Connecting to Server 46..."
-                    $session = New-PSSession -ComputerName $SERVER -Credential $cred -Authentication Negotiate
-
-                    # -------- PATHS --------
-                    $localJar  = "target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
-                    $remoteDir = "C:\\Users\\swethasuresh\\test.ondc"
-
-                    # -------- CREATE FOLDER --------
-                    Invoke-Command -Session $session -ScriptBlock {
-                        param($remoteDir)
-                        if (!(Test-Path $remoteDir)) {
-                            New-Item -ItemType Directory -Path $remoteDir
-                        }
-                    } -ArgumentList $remoteDir
-
-                    # -------- COPY JAR --------
-                    Write-Host "Copying JAR..."
-                    Copy-Item -Path $localJar -Destination $remoteDir -ToSession $session -Force
-
-                    # -------- RUN JAR --------
-                    Invoke-Command -Session $session -ScriptBlock {
-                        param($remoteDir)
-
-                        Set-Location $remoteDir
-
-                        Write-Host "Stopping old application..."
-                        Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force
-
-                        Start-Sleep -Seconds 3
-
-                        Write-Host "Starting new application..."
-
-                        Start-Process "java" `
-                          -ArgumentList "-jar BuyerApp-Motor-0.0.1-SNAPSHOT.jar" `
-                          -WorkingDirectory $remoteDir `
-                          -RedirectStandardOutput "$remoteDir\\app.out.log" `
-                          -RedirectStandardError "$remoteDir\\app.err.log" `
-                          -NoNewWindow
-
-                    } -ArgumentList $remoteDir
-
-                    # -------- CLOSE SESSION --------
-                    Remove-PSSession $session
-
-                    Write-Host "Deployment Completed Successfully"
-
-                    '''
-                }
-            }
+        failure {
+            echo 'FAILED ❌ (Test or Sonar issue)'
         }
     }
 }
