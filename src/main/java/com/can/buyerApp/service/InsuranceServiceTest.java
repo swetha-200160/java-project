@@ -3,11 +3,14 @@ package com.can.buyerApp.service;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class InsuranceServiceTest {
+class InsuranceServiceTest {
 
     @Test
     void testSample() {
-        int result = 2 + 3;
+        int a = 2;
+        int b = 3;
+        int result = a + b;
+
         assertEquals(5, result);
     }
 }
