@@ -1,8 +1,13 @@
 pipeline {
     agent any
 
+    tools {
+        maven 'Maven'
+        jdk 'JDK17'
+    }
+
     environment {
-        SERVER_NAME = "RS-server"
+        SONARQUBE_ENV = 'SonarQube'
     }
 
     stages {
@@ -10,158 +15,34 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 git branch: 'develop',
-                    url: 'git@github.com:swetha-200160/java-project.git',
+                    url: 'git@github.com:your-repo.git',
                     credentialsId: 'github-ssh'
             }
         }
 
-        stage('Build JAR') {
+        stage('Build & Run Tests') {
             steps {
-                bat 'mvn clean package -DskipTests'
+                bat 'mvn clean verify'
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    bat """
-                    mvnw.cmd sonar:sonar ^
-                      -Dsonar.host.url=https://test.canvendor.co.in/sonarqube ^
-                      -Dsonar.login=%SONAR_TOKEN% ^
-                      -Dsonar.projectKey=BuyerApp-Motor ^
-                      -Dsonar.projectName=BuyerApp-Motor
-                    """
+                withSonarQubeEnv('SonarQube') {
+                    bat '''
+                    mvn sonar:sonar ^
+                    -Dsonar.projectKey=BuyerApp ^
+                    -Dsonar.host.url=http://localhost:9000 ^
+                    -Dsonar.login=YOUR_TOKEN ^
+                    -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+                    '''
                 }
             }
         }
 
-        stage('Deploy to Server 46 (WinRM)') {
+        stage('Quality Gate') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'winrm-creds',
-                        usernameVariable: 'WIN_USER',
-                        passwordVariable: 'WIN_PASS'
-                    )
-                ]) {
-                    powershell '''
-
-                    # -------- CONNECT --------
-                    $SERVER = "192.168.0.46"
-
-                    $sec  = ConvertTo-SecureString $env:WIN_PASS -AsPlainText -Force
-                    $cred = New-Object System.Management.Automation.PSCredential($env:WIN_USER, $sec)
-
-                    Write-Host "Connecting to Server 46..."
-                    $session = New-PSSession -ComputerName $SERVER -Credential $cred -Authentication Negotiate
-
-                    if ($session.State -ne "Opened") {
-                        Write-Host "ERROR: Session not opened"
-                        exit 1
-                    }
-
-                    # -------- PATHS --------
-                    $localJar  = "target\\BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
-                    $remoteDir = "C:\\Users\\swethasuresh\\test.ondc"
-                    $jarName   = "BuyerApp-Motor-0.0.1-SNAPSHOT.jar"
-
-                    Write-Host "======================================"
-                    Write-Host "ONDC JAR DEPLOYMENT STARTED"
-                    Write-Host "======================================"
-
-                    # -------- KILL + BACKUP --------
-                    Invoke-Command -Session $session -ScriptBlock {
-                        param($remoteDir, $jarName)
-
-                        $port = 9998
-
-                        Write-Host "======================================"
-                        Write-Host "STEP 1: FIND PID & KILL PROCESS"
-                        Write-Host "======================================"
-
-                        # ✅ YOUR LOGIC (FIXED)
-                        $pid = (Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue).OwningProcess
-
-                        if ($pid) {
-                            Write-Host "Killing process on port $port (PID: $pid)"
-                            Stop-Process -Id $pid -Force
-                            Start-Sleep -Seconds 5
-                        } else {
-                            Write-Host "No process found on port $port"
-                        }
-
-                        Write-Host "======================================"
-                        Write-Host "STEP 2: BACKUP OLD JAR"
-                        Write-Host "======================================"
-
-                        $jarPath   = Join-Path $remoteDir $jarName
-                        $backupDir = Join-Path $remoteDir "backup"
-
-                        if (!(Test-Path $backupDir)) {
-                            New-Item -ItemType Directory -Path $backupDir | Out-Null
-                        }
-
-                        if (Test-Path $jarPath) {
-                            $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-                            $backupPath = "$backupDir\\$jarName-$timestamp"
-
-                            Move-Item $jarPath $backupPath -Force
-                            Write-Host "Backup created: $backupPath"
-                        } else {
-                            Write-Host "No old JAR found"
-                        }
-
-                    } -ArgumentList $remoteDir, $jarName
-
-                    # -------- COPY NEW JAR --------
-                    if ($session.State -eq "Opened") {
-                        Write-Host "Copying new JAR..."
-                        Copy-Item -Path $localJar -Destination $remoteDir -ToSession $session -Force
-                    } else {
-                        Write-Host "ERROR: Session broken before copy"
-                        exit 1
-                    }
-
-                    # -------- START NEW JAR --------
-                    Invoke-Command -Session $session -ScriptBlock {
-                        param($remoteDir, $jarName)
-
-                        Set-Location $remoteDir
-
-                        Write-Host "Starting new application..."
-
-                        Start-Process "java" `
-                          -ArgumentList ("-jar " + $jarName) `
-                          -WorkingDirectory $remoteDir `
-                          -RedirectStandardOutput ($remoteDir + "\\app.out.log") `
-                          -RedirectStandardError ($remoteDir + "\\app.err.log")
-
-                        Start-Sleep -Seconds 5
-
-                        $newProcess = Get-CimInstance Win32_Process | Where-Object {
-                            $_.CommandLine -match [regex]::Escape($jarName)
-                        }
-
-                        if ($newProcess) {
-                            foreach ($p in $newProcess) {
-                                Write-Host ("NEW PID: " + $p.ProcessId)
-                            }
-                        } else {
-                            Write-Host "ERROR: Failed to start new JAR"
-                            exit 1
-                        }
-
-                    } -ArgumentList $remoteDir, $jarName
-
-                    # -------- CLOSE SESSION --------
-                    Remove-PSSession $session
-
-                    Write-Host "======================================"
-                    Write-Host "DEPLOYMENT COMPLETED"
-                    Write-Host "======================================"
-
-                    '''
-                }
+                waitForQualityGate abortPipeline: true
             }
         }
     }
