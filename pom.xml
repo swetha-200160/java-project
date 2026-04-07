@@ -24,6 +24,7 @@
         <java.version>17</java.version>
     </properties>
 
+    <!-- ✅ ALL DEPENDENCIES HERE -->
     <dependencies>
 
         <!-- Web -->
@@ -73,10 +74,17 @@
             <version>1.78</version>
         </dependency>
 
-        <!-- TEST (IMPORTANT) -->
+        <!-- TEST -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- ✅ H2 DB (FIXED POSITION) -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
 
@@ -107,7 +115,7 @@
 
                     <execution>
                         <id>report</id>
-                        <phase>test</phase>
+                        <phase>verify</phase>
                         <goals>
                             <goal>report</goal>
                         </goals>
@@ -120,11 +128,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-<dependency>
-    <groupId>com.h2database</groupId>
-    <artifactId>h2</artifactId>
-    <scope>test</scope>
-</dependency>
+
         </plugins>
     </build>
 
