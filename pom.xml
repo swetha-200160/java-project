@@ -108,12 +108,12 @@
                     </execution>
 
                     <execution>
-                        <id>report</id>
-                        <phase>test</phase> <!-- IMPORTANT -->
-                        <goals>
-                            <goal>report</goal>
-                        </goals>
-                    </execution>
+    <id>report</id>
+    <phase>test</phase>
+    <goals>
+        <goal>report</goal>
+    </goals>
+</execution>
 
                 </executions>
             </plugin>
