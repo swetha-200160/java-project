@@ -1,4 +1,4 @@
-public class SampleTest{
+public class SampleTest {
     
     @org.junit.jupiter.api.Test
     void test1() {
