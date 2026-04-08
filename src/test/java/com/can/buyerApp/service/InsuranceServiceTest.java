@@ -1,9 +1,10 @@
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
-public class SampleTest {
+public class InsuranceServiceTest {
 
     @Test
-    public void testOne() {
-        System.out.println("Test running");
+    void testSimple() {
+        assertEquals(5, 2 + 3);
     }
 }

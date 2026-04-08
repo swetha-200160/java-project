@@ -1,10 +1,7 @@
-import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
-
 public class SampleTest {
-
-    @Test
-    void testExample() {
-        assertEquals(5, 2 + 3);
+    
+    @org.junit.jupiter.api.Test
+    void test1() {
+        System.out.println("Test 1 running");
     }
 }
