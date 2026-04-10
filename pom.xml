@@ -5,6 +5,7 @@
 
     <modelVersion>4.0.0</modelVersion>
 
+    <!-- ✅ Spring Boot Parent -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
@@ -12,30 +13,33 @@
         <relativePath/>
     </parent>
 
-    <project>
-    
-    <modelVersion>4.0.0</modelVersion>
-
+    <!-- ✅ Project Info -->
     <groupId>com.example</groupId>
     <artifactId>BuyerApp-Motor</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 
+    <!-- ✅ Sonar -->
     <properties>
-        <!-- sonar config -->
         <sonar.coverage.jacoco.xmlReportPaths>
             target/site/jacoco/jacoco.xml
         </sonar.coverage.jacoco.xmlReportPaths>
     </properties>
 
+    <!-- ✅ Dependencies -->
     <dependencies>
-        <!-- your dependencies -->
+        <!-- Example test dependency (IMPORTANT) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
-    <!-- ✅ ONLY ONE build tag -->
+    <!-- ✅ Build -->
     <build>
         <plugins>
 
-            <!-- ✅ JaCoCo plugin -->
+            <!-- ✅ JaCoCo -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
