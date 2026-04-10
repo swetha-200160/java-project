@@ -17,13 +17,10 @@
     <version>0.0.1-SNAPSHOT</version>
 
     <properties>
-        <java.version>17</java.version>
-
-        <!-- SonarQube Coverage Path -->
-        <sonar.coverage.jacoco.xmlReportPaths>
-            target/site/jacoco/jacoco.xml
-        </sonar.coverage.jacoco.xmlReportPaths>
-    </properties>
+    <sonar.coverage.jacoco.xmlReportPaths>
+        target/site/jacoco/jacoco.xml
+    </sonar.coverage.jacoco.xmlReportPaths>
+</properties>
 
     <dependencies>
 
